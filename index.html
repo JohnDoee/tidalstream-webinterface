@@ -43,7 +43,10 @@
     </div>
 
     <div class="container">
-      <div id="target">
+      <div id="target" class="span12 row">
+        
+      </div>
+      <div id="target_footer" class="span12 row">
         
       </div>
       <!--<div class="row">
@@ -73,9 +76,11 @@
     <script src="assets/js/jquery-1.9.1.min.js"></script>
     <script src="assets/js/bootstrap.min.js"></script>
     <script src="assets/js/jquery.base64.min.js"></script>
+    <script src="assets/js/jquery.blockUI.js"></script>
+    <script src="assets/js/purl.js"></script>
     <script src="assets/js/handlebars.js"></script>
     <script src="assets/js/script.js"></script>
-    <script id="login-form-template" type="text/x-handlebars-template">
+    <script class="login-form-template" type="text/x-handlebars-template">
       <div class="row">
         <div class="span3"></div>
         <div class="span5 well">
@@ -108,23 +113,48 @@
         </div>
       </div>
     </script>
-    <script id="section-bar-template" type="text/x-handlebars-template">
-      {{#each items}}
-        {{#each .}}
-          <li><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></li>
-        {{/each}}
-      {{/each}}
+    <script class="section-bar-template" type="text/x-handlebars-template">
+      {{#each result}}
+        <li><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></li>
+       {{/each}}
     </script>
-    <script id="folder-listing-template" type="text/x-handlebars-template">
-      <h1>{{ name }}</h1>
-      {{#each items}}
-        <h3>{{ @key }}</h3>
+    <script class="folder-listing-template default" type="text/x-handlebars-template">
+      <div class="{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
+        <h1 data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</h1>
         <table class="table table-striped">
-        {{#each .}}
+        {{#each result}}
           <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></td></tr>
         {{/each}}
         </table>
-      {{/each}}
+      </div>
+    </script>
+    
+    <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="cover-listing">
+      <div class="span2 media-element{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
+        <a class="{{ rel }}" href="{{ href }}">
+          <img data-metadata="cover" data-metadata-target="src" class="metadata" />
+          <p data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</p>
+        </a>
+      </div>
+    </script>
+    <script class="folder-listing-template tvshows movies" type="text/x-handlebars-template">
+      <h1>{{ name }}</h1>
+      {{#eachnum result count="6" page=_page_num}}
+        <div class="row">
+          {{#each .}}
+            {{> cover-listing}}
+          {{/each}}
+        </div>
+      {{/eachnum}}
+    </script>
+    <script class="pagination-footer" type="text/x-handlebars-template">
+      <div class="pagination pagination-centered">
+        <ul>
+        {{#each .}}
+          <li{{#if cls}} class="{{ cls }}"{{/if}}><a class="set_url_param" data-param-name="page" data-param-value="{{ target }}" href="#">{{{ text }}}</a></li>
+        {{/each}}
+        </ul>
+      </div>
     </script>
   </body>
 </html>
