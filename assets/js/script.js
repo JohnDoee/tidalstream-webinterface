@@ -229,7 +229,7 @@ $(document).ready(function () {
             if (current_url != last_url) {
                 last_url = current_url;
                 last_local_part = undefined;
-                $.blockUI({ message: '<img src="/assets/img/spinner.gif" /> Loading....' }); 
+                block_ui();
                 download_and_paginate(current_url, '.folder-listing-template', '#target');
             } else if (local_part != last_local_part) {
                 var tmp = $.url('?' + last_local_part).param();
@@ -243,6 +243,10 @@ $(document).ready(function () {
             };
         }
     };
+    
+    var block_ui = function() {
+        $.blockUI({ message: '<img src="/assets/img/spinner.gif" /> Loading....' });
+    }
     
     $(window).on('hashchange', update_page);
     
@@ -261,4 +265,31 @@ Handlebars.registerHelper('eachnum', function(context, options) {
     }
   
     return ret;
+});
+
+Handlebars.registerHelper('ifCond', function (v1, operator, v2, options) { // http://stackoverflow.com/a/16315366
+    switch (operator) {
+        case '==':
+            return (v1 == v2) ? options.fn(this) : options.inverse(this);
+            break;
+        case '===':
+            return (v1 === v2) ? options.fn(this) : options.inverse(this);
+            break;
+        case '<':
+            return (v1 < v2) ? options.fn(this) : options.inverse(this);
+            break;
+        case '<=':
+            return (v1 <= v2) ? options.fn(this) : options.inverse(this);
+            break;
+        case '>':
+            return (v1 > v2) ? options.fn(this) : options.inverse(this);
+            break;
+        case '>=':
+            return (v1 >= v2) ? options.fn(this) : options.inverse(this);
+            break;
+        default:
+            return options.inverse(this);     
+            break;
+    }
+    return options.inverse(this);
 });

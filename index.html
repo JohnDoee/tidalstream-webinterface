@@ -100,12 +100,24 @@
         <li><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></li>
        {{/each}}
     </script>
+    
+    
+    <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="item-listing">
+      <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></td></tr>
+    </script>
+    
     <script class="folder-listing-template default" type="text/x-handlebars-template">
       <div class="{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
         <h1 data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</h1>
         <table class="table table-striped">
         {{#each result}}
-          <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></td></tr>
+          {{#ifCond rel '==' 'folder'}}
+            {{#each result}}
+              {{> item-listing}}
+            {{/each}}
+          {{else}}
+            {{> item-listing}}
+          {{/ifCond}}
         {{/each}}
         </table>
       </div>
@@ -114,7 +126,7 @@
     <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="cover-listing">
       <div class="span2 media-element{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
         <a class="{{ rel }}" href="{{ href }}">
-          <img data-metadata="cover" data-metadata-target="src" class="metadata" />
+          <img src="assets/img/placeholder.jpg" data-metadata="cover" data-metadata-target="src" class="metadata" />
           <p data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</p>
         </a>
       </div>
