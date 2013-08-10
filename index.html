@@ -103,7 +103,7 @@
     
     
     <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="item-listing">
-      <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></td></tr>
+      <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a>{{#if watched}}<i class="icon-ok pull-right"></i>{{/if}}</td></tr>
     </script>
     
     <script class="folder-listing-template default" type="text/x-handlebars-template">
@@ -126,7 +126,7 @@
     <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="cover-listing">
       <div class="span2 media-element{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
         <a class="{{ rel }}" href="{{ href }}">
-          <img src="assets/img/placeholder.jpg" data-metadata="cover" data-metadata-target="src" class="metadata" />
+          <img src="assets/img/placeholder.jpg" data-metadata="cover" data-metadata-target="src" class="metadata img-polaroid" />
           <p data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</p>
         </a>
       </div>
@@ -149,6 +149,9 @@
         {{/each}}
         </ul>
       </div>
+    </script>
+    <script id="loadingscreen" type="text/x-handlebars-template">
+      <img src="assets/img/spinner.gif" /> Loading....
     </script>
   </body>
 </html>

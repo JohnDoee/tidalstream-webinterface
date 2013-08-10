@@ -169,6 +169,7 @@ $(document).ready(function () {
     
     $(document).on('click', 'a.file', function(e) {
         e.preventDefault();
+        block_ui();
         $.ajax(update_ajax_config({
             url: $(this).prop('href'),
             method: 'POST'
@@ -245,7 +246,8 @@ $(document).ready(function () {
     };
     
     var block_ui = function() {
-        $.blockUI({ message: '<img src="/assets/img/spinner.gif" /> Loading....' });
+        var template = Handlebars.compile($('#loadingscreen').html());
+        $.blockUI({ message: template()});
     }
     
     $(window).on('hashchange', update_page);
