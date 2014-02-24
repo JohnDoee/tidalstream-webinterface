@@ -1,0 +1,42 @@
+<div ng-show="data.loading">
+    Loading... please wait
+</div>
+
+<div ng-hide="data.loading">
+    <h1 style="overflow: hidden; text-overflow: ellipsis;">{{ title }}</h1>
+    <div class="row">
+        <div class="col-md-2">
+            <select class="form-control" ng-change="switchSorting()" ng-model="data.currentSorting" ng-options="sorting.value as sorting.name for sorting in sortOptions">
+                <option value="">Select sorting</option>
+            </select>
+        </div>
+    </div>
+    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1">
+        <div ng-hide="showSearchBox" class="row"><a ng-click="showSearchBox = true" href>Show search box</a></div>
+        <div ng-show="showSearchBox" class="row" ng-controller="SearchBoxCtrl" ng-include="template"></div>
+        
+        <div class="row" ng-repeat="row in groupedListing">
+            <div ng-repeat="item in row" class="col-md-2 media-element">
+                <a ng-click="handleItem(item)" href>
+                    <img ng-src="{{ item.metadata.result.cover || 'assets/img/placeholder.jpg' }}?filter=resize&filter-maxwidth=255&filter-maxheight=290" class="img-thumbnail" />
+                    <p style="overflow: hidden; text-overflow: ellipsis;">{{ item.metadata.result.title || item.name }}</p>
+                </a>
+      </div>
+        </div>
+    </div>
+    <div ng-show="['default', 'episodes'].indexOf(contentType) > -1">
+        <table class="table table-striped">
+            <tr ng-repeat="item in listing"><td><a ng-click="handleItem(item)" href>{{ item.name }}</a><span ng-if="item.watched" class="pull-right">{{ item.watch_date * 1000 | date }}<span class="glyphicon glyphicon-ok"></span></span></td></tr>
+        </table>
+    </div>
+    </div>
+    <div class="row" style="text-align: center;" ng-if="paginationFooter.lastPage > 0">
+        <ul class="pagination">
+            <li ng-class="{disabled: (paginationFooter.previousPage == null)}"><a ng-click="switchPage(paginationFooter.previousPage)" href>Prev</a></li>
+            <li ng-if="paginationFooter.previousPageDots"><a href>&hellip;</a></li>
+            <li ng-repeat="page in paginationFooter.pageList" ng-class="{active: (page == currentPage)}"><a ng-click="switchPage(page)" href>{{ page+1 }}</a></li>
+            <li ng-if="paginationFooter.nextPageDots"><a href>&hellip;</a></li>
+            <li ng-class="{disabled: (paginationFooter.nextPage == null)}"><a ng-click="switchPage(paginationFooter.nextPage)" href>Next</a></li>
+        </ul>
+    </div>
+</div>
