@@ -1,6 +1,7 @@
-window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB
-window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction
-window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange
+if Modernizr.indexeddb
+    window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB
+    window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction
+    window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange
 
 # constants, fu coffeescript
 DB_NAME = 'tidalstream-metadata-storage'
@@ -10,9 +11,11 @@ ENTRIES_PER_PAGE = 60
 PAGINATION_CUTOFF = 5
 UPDATE_PLAYER_INTERVAL = 100
 WEBSOCKET_PING = 60000
+KNOWN_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 tidalstreamApp = angular.module 'tidalstreamApp', [
-    'ngRoute'
+    'ngRoute',
+    'ui.bootstrap'
 ]
 
 tidalstreamApp.config ($provide, $httpProvider) ->
@@ -142,8 +145,10 @@ tidalstreamApp.config ($provide) ->
                     when 'update'
                         for key, value of data.params.player
                             obj.players[player_id].player[key] = value
+                    
                     when 'ended'
                         obj.players[player_id].player = {}
+                    
                     when 'bye'
                         delete obj.players[player_id]
                         
@@ -251,7 +256,21 @@ tidalstreamApp.config ($provide) ->
                             
                             deferred.resolve data
                             
-                            obj.verifyMetadata data
+                            if Modernizr.indexeddb
+                                obj.verifyMetadata data
+                
+                deferred.promise
+            
+            getMetadata: (item) ->
+                href = item.metadata.href
+                unless href.indexOf('http') == 0
+                    href = "#{ @apiserver }#{ path }"
+                
+                deferred = $q.defer()
+                
+                $http.get href
+                    .success (data) ->
+                        deferred.resolve data
                 
                 deferred.promise
             
@@ -278,27 +297,41 @@ tidalstreamApp.config ($provide) ->
                 unless obj.loggedIn or newValue == '/login'
                     $location.path '/login'
         
-        obj._openMetadataDB()
+        if Modernizr.indexeddb
+            obj._openMetadataDB()
+        
         setInterval obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL
         setInterval obj._websocketPing, WEBSOCKET_PING
         
         obj
 
 tidalstreamApp.controller 'LoginCtrl', ($scope, $location, tidalstreamService) ->
-    $scope.apiserver = null
-    $scope.username = null
-    $scope.password = null
+    $scope.apiserver = localStorage.getItem "apiserver"
+    $scope.username = localStorage.getItem "username"
+    $scope.password = localStorage.getItem "password"
+    $scope.rememberLogin = !!($scope.apiserver and $scope.username)
+    $scope.rememberPassword = !!$scope.password
     
     $location.url $location.path()
     
     $scope.saveLoginInfo = ->
+        localStorage.removeItem "apiserver"
+        localStorage.removeItem "username"
+        localStorage.removeItem "password"
+        
+        if $scope.rememberLogin
+            localStorage.setItem "apiserver", $scope.apiserver
+            localStorage.setItem "username", $scope.username
+        
+        if $scope.rememberPassword
+            localStorage.setItem "password", $scope.password
+        
         tidalstreamService.hasLoggedIn @apiserver.replace(/\/+$/,'') , @username, @password
         $location.path '/'
 
 tidalstreamApp.controller 'FrontCtrl', ($scope) ->
-    $scope.currentSorting = 'a'
 
-tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, tidalstreamService) ->
+tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, $modal, tidalstreamService) ->
     $scope.isLoggedIn = -> tidalstreamService.loggedIn
     $scope.getSections = -> tidalstreamService.sections
     $scope.getPlayers = -> tidalstreamService.players
@@ -310,20 +343,28 @@ tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, tidalstreamService) 
         $location.path '/list'
         $location.search 'url', href
     
+    $scope.openPlayer = (player) ->
+        modalInstance = $modal.open
+            templateUrl: 'assets/partials/player.html'
+            controller: 'PlayerCtrl'
+            resolve:
+                player: ->
+                    player
+    
     tidalstreamService.onWebsocketUpdate = ->
-        $scope.$apply()
+        $scope.$digest()
 
-tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, tidalstreamService) ->
+tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, $q, tidalstreamService) ->
     $scope.listing = []
-    $scope.paginationFooter = null
+    $scope.pageToJumpTo = null
+    $scope.letterPages = {}
     
     args = $location.search()
-    
-    $scope.currentPage = currentPage = parseInt(args.page || 0)
     
     $scope.data =
         loading: true
         currentSorting: args.sort
+        currentPage: parseInt(args.page || 0)
     
     $scope.sortOptions = [
         {
@@ -334,6 +375,13 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, tidalstrea
             value: 'name'
         }
     ]
+    
+    $scope.$watch "data.currentPage", (newValue, oldValue) ->
+        if newValue != oldValue
+            $scope.switchPage newValue
+    
+    $scope.jumpToPage = ->
+        $scope.switchPage $scope.pageToJumpTo
     
     $scope.handleItem = (item) ->
         if item.rel == 'folder'
@@ -360,31 +408,37 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, tidalstrea
         
         retval
     
-    generatePaginationFooter = (entries) ->
-        lastPage = Math.floor(entries.length / ENTRIES_PER_PAGE)
-        
-        previousPage: if currentPage > 0 then currentPage-1 else null
-        previousPageDots: currentPage > PAGINATION_CUTOFF
-        pageList: (num for num in [Math.max(currentPage-PAGINATION_CUTOFF, 0)..Math.min(currentPage+PAGINATION_CUTOFF, lastPage)])
-        nextPageDots: currentPage + PAGINATION_CUTOFF < lastPage
-        nextPage: if currentPage < lastPage then currentPage+1 else null
-        lastPage: lastPage
-    
     addMetadata = (listing) ->
-        store = tidalstreamService._getObjectStore 'readonly'
+        deferred = $q.defer()
         
-        for item in listing
-            unless 'metadata' of item
-                continue
+        if Modernizr.indexeddb
+            missingMetadata = []
+            i = 0
+            store = tidalstreamService._getObjectStore 'readonly'
             
-            req = store.get item.metadata.href
-            req.onsuccess = ((item) ->
-                (evt) ->
-                    value = evt.target.result;
-                    if value
-                        $scope.$apply ->
-                            item.metadata.result = value
-            )(item)
+            for item in listing
+                unless 'metadata' of item
+                    continue
+                
+                i++
+                
+                req = store.get item.metadata.href
+                req.onsuccess = ((item) ->
+                    (evt) ->
+                        i--
+                        value = evt.target.result
+                        if value
+                            $scope.$apply ->
+                                item.metadata.result = value
+                        else
+                            missingMetadata.push item
+                        
+                        if i == 0
+                            deferred.resolve missingMetadata
+                )(item)
+        else
+            deferred.resolve (item for item in listing when 'metadata' of item)
+        return deferred.promise
     
     flattenListing = (listing) ->
         retval = []
@@ -399,6 +453,23 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, tidalstrea
             flatten listing
         
         retval
+    
+    generateLetterPages = (listing) ->
+        $scope.letterPages = {'#': 0}
+        i = 0
+        for item in listing
+            unless item.name
+                continue
+            
+            firstLetter = item.name[0].toUpperCase()
+            
+            unless firstLetter in KNOWN_LETTERS
+                continue
+            
+            unless firstLetter of $scope.letterPages
+                $scope.letterPages[firstLetter] = parseInt(i / ENTRIES_PER_PAGE)
+            
+            i++
     
     tidalstreamService.listFolder args.url
         .then (data) ->
@@ -427,11 +498,21 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, tidalstrea
                 if reverse
                     listing.reverse()
             
-            listing = listing.slice currentPage*ENTRIES_PER_PAGE, (currentPage+1) * ENTRIES_PER_PAGE
-            $scope.missingMetadata = addMetadata listing
+            generateLetterPages listing
+            $scope.lastPage = Math.floor(listing.length / ENTRIES_PER_PAGE)
+            
+            listing = listing.slice $scope.data.currentPage*ENTRIES_PER_PAGE, ($scope.data.currentPage+1) * ENTRIES_PER_PAGE
+            addMetadata listing
+                .then (missingMetadata) ->
+                    for item in missingMetadata
+                        tidalstreamService.getMetadata item
+                            .then ((item) ->
+                                (metadata) ->
+                                    if metadata
+                                        item.metadata.result = metadata
+                                )(item)
             
             $scope.listing = listing
-            $scope.paginationFooter = generatePaginationFooter data.result
             $scope.groupedListing = generateGroupedListing $scope.listing, 6
 
 tidalstreamApp.controller 'SearchBoxCtrl', ($scope, $location, tidalstreamService) ->
@@ -499,26 +580,20 @@ tidalstreamApp.controller 'SearchBoxCtrl', ($scope, $location, tidalstreamServic
         (item) ->
             !func item
 
-tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, tidalstreamService) ->
-    $scope.player = null
-    $scope.player_id = null
+tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, $modalInstance, tidalstreamService, player) ->
+    $scope.player = player
+    $scope.playerId = player.player_id
     $scope.currentPosition = '00:00:00'
     $scope.currentAudiostream = 0
     $scope.getCurrentDefaultPlayer = -> tidalstreamService.currentDefaultPlayer
     $scope.setDefaultPlayer = (player) ->
         tidalstreamService.currentDefaultPlayer = player.player_id
     
-    $scope.$watch (-> $scope.playerId == null || tidalstreamService.players[$scope.playerId] ), (newValue, oldValue) ->
-        unless $scope.playerId == null
-            if $scope.playerId of tidalstreamService.players
-                $scope.player = tidalstreamService.players[$scope.playerId]
-            else
-                $scope.player = null
-    
-    $scope.setPlayer = (player) ->
-        $scope.$apply ->
-            $scope.playerId = player.player_id
-            $scope.player = player
+    $scope.$watch (-> tidalstreamService.players[$scope.playerId] ), (newValue, oldValue) ->
+        if $scope.playerId of tidalstreamService.players
+            $scope.player = tidalstreamService.players[$scope.playerId]
+        else
+            $scope.player = null
     
     $scope.fastBackward = ->
         tidalstreamService.playerPrevious $scope.player.player_id
@@ -562,8 +637,10 @@ tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, tidalstreamService) 
     
     interval = $interval (->), 1000
     
-    $scope.$on '$destroy', ->
+    $scope.$originalDestroy = $scope.$destroy
+    $scope.$destroy = ->
         $interval.cancel interval
+        $scope.$originalDestroy()
     
     calculateProgressbarTimestamp = (event) ->
         width = event.currentTarget.offsetWidth
@@ -584,24 +661,6 @@ tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, tidalstreamService) 
             return null
         
         speeds[index+direction] || currentSpeed
-    
-    $scope
-
-tidalstreamApp.directive 'tsPlayerModal', ->
-    obj =
-        restrict: 'A'
-        link: (scope, element, attrs) ->
-            openDialog = ->
-                element = angular.element '#playerModal'
-                ctrl = element.controller()
-                ctrl.setPlayer scope.player
-                element.modal 'show'
-            
-            element.bind 'click', openDialog
-        
-        scope: { player: '=tsPlayerModal' },
-    
-    obj
 
 tidalstreamApp.filter 'timespan', ->
     (input) ->

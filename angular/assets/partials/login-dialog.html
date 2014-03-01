@@ -1,7 +1,13 @@
 <form id="login" name="loginForm" class="form-signin" role="form" ng-controller="LoginCtrl" ng-submit="saveLoginInfo()">
     <h2 class="form-signin-heading">Please sign in</h2>
-    <input ng-model="apiserver" type="url" class="form-control" placeholder="APIServer URL" required autofocus>
-    <input ng-model="username" type="text" class="form-control" placeholder="Username" required>
-    <input ng-model="password" type="password" class="form-control" placeholder="Password" required>
+    <input id="apiserver" ng-model="apiserver" type="url" class="form-control" placeholder="APIServer URL" required autofocus>
+    <input id="username" ng-model="username" type="text" class="form-control" placeholder="Username" required>
+    <input id="password" ng-model="password" type="password" class="form-control" placeholder="Password" required>
+    <label class="checkbox">
+        <input value="remember-login" type="checkbox" ng-model="rememberLogin"> Remember login
+    </label>
+    <label class="checkbox">
+        <input value="remember-password" type="checkbox" ng-model="rememberPassword"> Remember password
+    </label>
     <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
 </form>

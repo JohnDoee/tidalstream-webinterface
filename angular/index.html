@@ -22,26 +22,15 @@
 
   <body>
 
-    <div class="navbar navbar-inverse navbar-fixed-top" role="navigation" ng-include="'assets/partials/navbar.html'" ng-controller="NavbarCtrl">
-      
-    </div>
+    <div class="navbar navbar-inverse navbar-fixed-top" role="navigation" ng-include="'assets/partials/navbar.html'" ng-controller="NavbarCtrl"></div>
+    <div class="container" ng-view></div>
 
-    <div class="container" ng-view>
-        
-    </div><!-- /.container -->
-    
-    <div ng-controller="PlayerCtrl" class="modal fade" id="playerModal" tabindex="-1" role="dialog" aria-labelledby="playerModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-          <div class="modal-content" ng-include="'assets/partials/player.html'">
-            
-          </div>
-        </div>
-    </div>
-
-    <script src="assets/js/jquery-2.1.0.min.js"></script>
-    <script src="assets/js/bootstrap.min.js"></script>
+    <!--<script src="assets/js/jquery-2.1.0.min.js"></script>-->
+    <!--<script src="assets/js/bootstrap.min.js"></script>-->
+    <script src="assets/js/modernizr.js"></script>
     <script src="assets/js/angular.min.js"></script>
     <script src="assets/js/angular-route.min.js"></script>
+    <script src="assets/js/ui-bootstrap-tpls-0.10.0.min.js"></script>
     <script src="assets/js/script.js"></script>
   </body>
 </html>

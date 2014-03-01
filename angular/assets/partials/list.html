@@ -6,15 +6,23 @@
     <h1 style="overflow: hidden; text-overflow: ellipsis;">{{ title }}</h1>
     <div class="row">
         <div class="col-md-2">
+            <a class="btn btn-default" ng-hide="showSearchBox" ng-click="showSearchBox = true" href>Show search box</a>
+        </div>
+        <div class="col-md-2">
+            <select ng-show="letterPages" class="form-control" ng-change="jumpToPage()" ng-model="pageToJumpTo" ng-options="letter for (letter, value) in letterPages">
+                <option value="">Jump to</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+        </div>
+        <div class="col-md-2">
             <select class="form-control" ng-change="switchSorting()" ng-model="data.currentSorting" ng-options="sorting.value as sorting.name for sorting in sortOptions">
                 <option value="">Select sorting</option>
             </select>
         </div>
     </div>
+    <div ng-show="showSearchBox" class="row" ng-controller="SearchBoxCtrl" ng-include="template"></div>
     <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1">
-        <div ng-hide="showSearchBox" class="row"><a ng-click="showSearchBox = true" href>Show search box</a></div>
-        <div ng-show="showSearchBox" class="row" ng-controller="SearchBoxCtrl" ng-include="template"></div>
-        
         <div class="row" ng-repeat="row in groupedListing">
             <div ng-repeat="item in row" class="col-md-2 media-element">
                 <a ng-click="handleItem(item)" href>
@@ -30,13 +38,7 @@
         </table>
     </div>
     </div>
-    <div class="row" style="text-align: center;" ng-if="paginationFooter.lastPage > 0">
-        <ul class="pagination">
-            <li ng-class="{disabled: (paginationFooter.previousPage == null)}"><a ng-click="switchPage(paginationFooter.previousPage)" href>Prev</a></li>
-            <li ng-if="paginationFooter.previousPageDots"><a href>&hellip;</a></li>
-            <li ng-repeat="page in paginationFooter.pageList" ng-class="{active: (page == currentPage)}"><a ng-click="switchPage(page)" href>{{ page+1 }}</a></li>
-            <li ng-if="paginationFooter.nextPageDots"><a href>&hellip;</a></li>
-            <li ng-class="{disabled: (paginationFooter.nextPage == null)}"><a ng-click="switchPage(paginationFooter.nextPage)" href>Next</a></li>
-        </ul>
+    <div class="row" style="text-align: center;" ng-if="lastPage > 0">
+        <pagination items-per-page="1" total-items="lastPage" page="data.currentPage" max-size="7" class="pagination" boundary-links="true"></pagination>
     </div>
 </div>

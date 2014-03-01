@@ -23,7 +23,7 @@
         Players <span class="caret"></span>
         </a>
         <ul class="dropdown-menu" role="menu">
-          <li ng-repeat="player in getPlayers()"><a ts-player-modal="player" href>{{ player.name }} <span ng-show="player.player_id == getCurrentDefaultPlayer()" class="glyphicon glyphicon-ok"></span></a></li>
+          <li ng-repeat="player in getPlayers()"><a ng-click="openPlayer(player)" href>{{ player.name }} <span ng-show="player.player_id == getCurrentDefaultPlayer()" class="glyphicon glyphicon-ok"></span></a></li>
         </ul>
       </li>
     </ul>
