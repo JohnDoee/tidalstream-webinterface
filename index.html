@@ -1,157 +1,36 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" ng-app="tidalstreamApp">
   <head>
     <meta charset="utf-8">
-    <title>Tidalstream</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="">
     <meta name="author" content="">
 
-    <link href="assets/css/bootstrap.css" rel="stylesheet">
-    <style type="text/css">
-      body {
-        padding-top: 60px;
-        padding-bottom: 40px;
-      }
-    </style>
-    <link href="assets/css/bootstrap-responsive.css" rel="stylesheet">
+    <title>TidalStream</title>
 
+    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/css/bootstrap-theme.css" rel="stylesheet">
+    <link href="assets/css/style.css" rel="stylesheet">
+    
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!--[if lt IE 9]>
-      <script src="assets/js/html5shiv.js"></script>
+      <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+      <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
     <![endif]-->
   </head>
 
   <body>
 
-    <div class="navbar navbar-inverse navbar-fixed-top">
-      <div class="navbar-inner">
-        <div class="container">
-          <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-          </button>
-          <a class="brand" href="#">TidalStream</a>
-          <div class="nav-collapse collapse">
-            <ul id="section_bar" class="nav">
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div class="navbar navbar-inverse navbar-fixed-top" role="navigation" ng-include="'assets/partials/navbar.html'" ng-controller="NavbarCtrl"></div>
+    <div class="container" ng-view></div>
 
-    <div class="container">
-      <div id="target" class="span12 row">
-        
-      </div>
-      <div id="target_footer" class="span12 row">
-        
-      </div>
-      <hr>
-
-      <footer>
-        <p>&copy; TidalStream 2013</p>
-      </footer>
-
-    </div>
-
-    <script src="assets/js/jquery-1.9.1.min.js"></script>
-    <script src="assets/js/bootstrap.min.js"></script>
-    <script src="assets/js/jquery.base64.min.js"></script>
-    <script src="assets/js/jquery.blockUI.js"></script>
-    <script src="assets/js/purl.js"></script>
-    <script src="assets/js/handlebars.js"></script>
+    <!--<script src="assets/js/jquery-2.1.0.min.js"></script>-->
+    <!--<script src="assets/js/bootstrap.min.js"></script>-->
+    <script src="assets/js/modernizr.js"></script>
+    <script src="assets/js/angular.min.js"></script>
+    <script src="assets/js/angular-route.min.js"></script>
+    <script src="assets/js/ui-bootstrap-tpls-0.10.0.min.js"></script>
     <script src="assets/js/script.js"></script>
-    <script class="login-form-template" type="text/x-handlebars-template">
-      <div class="row">
-        <div class="span3"></div>
-        <div class="span5 well">
-          <legend>Connect Form</legend>
-          <form id="login">
-            <div class="control-group">
-              <label class="control-label" for="apiserver">API Server URL</label>
-              <div class="controls">
-                <input class="input-block-level"  value="{{ apiserver }}" type="text" id="apiserver" placeholder="URL">
-              </div>
-            </div>
-            <div class="control-group">
-                <label class="control-label" for="username">Username</label>
-                <div class="controls">
-                  <input class="input-block-level" value="{{ username }}" type="text" id="username" placeholder="Username">
-                </div>
-              </div>
-              <div class="control-group">
-                <label class="control-label" for="password">Password</label>
-                <div class="controls">
-                  <input class="input-block-level" value="{{ password }}" type="password" id="password" placeholder="Password">
-                </div>
-              </div>
-              <div class="control-group">
-              <div class="controls">
-              <button type="submit" class="btn">Connect</button>
-              </div>
-            </div>
-          </form>
-        </div>
-      </div>
-    </script>
-    <script class="section-bar-template" type="text/x-handlebars-template">
-      {{#each result}}
-        <li><a class="{{ rel }}" href="{{ href }}">{{ name }}</a></li>
-       {{/each}}
-    </script>
-    
-    
-    <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="item-listing">
-      <tr><td><a class="{{ rel }}" href="{{ href }}">{{ name }}</a>{{#if watched}}<i class="icon-ok pull-right"></i>{{/if}}</td></tr>
-    </script>
-    
-    <script class="folder-listing-template default" type="text/x-handlebars-template">
-      <div class="{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
-        <h1 data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</h1>
-        <table class="table table-striped">
-        {{#each result}}
-          {{#ifCond rel '==' 'folder'}}
-            {{#each result}}
-              {{> item-listing}}
-            {{/each}}
-          {{else}}
-            {{> item-listing}}
-          {{/ifCond}}
-        {{/each}}
-        </table>
-      </div>
-    </script>
-    
-    <script class="handlebar-partial" type="text/x-handlebars-template" data-partial="cover-listing">
-      <div class="span2 media-element{{#if metadata}} metadatable{{/if}}" {{#if metadata}}data-metadata-rel="{{ metadata.href }}" {{/if}}>
-        <a class="{{ rel }}" href="{{ href }}">
-          <img src="assets/img/placeholder.jpg" data-metadata="cover" data-metadata-target="src" class="metadata img-polaroid" />
-          <p data-metadata="title" data-metadata-target="text" class="metadata" style="overflow: hidden; text-overflow: ellipsis;">{{ name }}</p>
-        </a>
-      </div>
-    </script>
-    <script class="folder-listing-template tvshows movies" type="text/x-handlebars-template">
-      <h1>{{ name }}</h1>
-      {{#eachnum result count="6" page=_page_num}}
-        <div class="row">
-          {{#each .}}
-            {{> cover-listing}}
-          {{/each}}
-        </div>
-      {{/eachnum}}
-    </script>
-    <script class="pagination-footer" type="text/x-handlebars-template">
-      <div class="pagination pagination-centered">
-        <ul>
-        {{#each .}}
-          <li{{#if cls}} class="{{ cls }}"{{/if}}><a class="set_url_param" data-param-name="page" data-param-value="{{ target }}" href="#">{{{ text }}}</a></li>
-        {{/each}}
-        </ul>
-      </div>
-    </script>
-    <script id="loadingscreen" type="text/x-handlebars-template">
-      <img src="assets/img/spinner.gif" /> Loading....
-    </script>
   </body>
 </html>
