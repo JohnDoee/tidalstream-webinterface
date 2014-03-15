@@ -10,7 +10,7 @@
   </div>
   <div class="collapse navbar-collapse" ng-if="isLoggedIn()">
     <ul class="nav navbar-nav">
-      <li class="dropdown">
+      <li ng-if="features.section" class="dropdown">
         <a class="dropdown-toggle" data-toggle="dropdown" href>
         Sections <span class="caret"></span>
         </a>
@@ -18,7 +18,7 @@
           <li ng-repeat="section in getSections()"><a ng-click="changePath(section.href)" href>{{ section.name }}</a></li>
         </ul>
       </li>
-      <li class="dropdown">
+      <li ng-if="features.control" class="dropdown">
         <a class="dropdown-toggle" data-toggle="dropdown" href>
         Players <span class="caret"></span>
         </a>
@@ -26,6 +26,9 @@
           <li ng-repeat="player in getPlayers()"><a ng-click="openPlayer(player)" href>{{ player.name }} <span ng-show="player.player_id == getCurrentDefaultPlayer()" class="glyphicon glyphicon-ok"></span></a></li>
         </ul>
       </li>
+    </ul>
+    <ul class="nav navbar-nav navbar-right">
+      <li><a ng-click="logout()" href>Logout</a></li>
     </ul>
   </div><!--/.nav-collapse -->
 </div>

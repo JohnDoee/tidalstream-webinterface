@@ -6,7 +6,7 @@
     <h1 style="overflow: hidden; text-overflow: ellipsis;">{{ title }}</h1>
     <div class="row">
         <div class="col-md-2">
-            <a class="btn btn-default" ng-hide="showSearchBox" ng-click="showSearchBox = true" href>Show search box</a>
+            <a ng-if="features.search" class="btn btn-default" ng-hide="showSearchBox" ng-click="showSearchBox = true" href>Show search box</a>
         </div>
         <div class="col-md-2">
             <select ng-show="letterPages" class="form-control" ng-change="jumpToPage()" ng-model="pageToJumpTo" ng-options="letter for (letter, value) in letterPages">
@@ -21,24 +21,10 @@
             </select>
         </div>
     </div>
-    <div ng-show="showSearchBox" class="row" ng-controller="SearchBoxCtrl" ng-include="template"></div>
-    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1">
-        <div class="row" ng-repeat="row in groupedListing">
-            <div ng-repeat="item in row" class="col-md-2 media-element">
-                <a ng-click="handleItem(item)" href>
-                    <img ng-src="{{ item.metadata.result.cover || 'assets/img/placeholder.jpg' }}?filter=resize&filter-maxwidth=255&filter-maxheight=290" class="img-thumbnail" />
-                    <p style="overflow: hidden; text-overflow: ellipsis;">{{ item.metadata.result.title || item.name }}</p>
-                </a>
-      </div>
-        </div>
-    </div>
-    <div ng-show="['default', 'episodes'].indexOf(contentType) > -1">
-        <table class="table table-striped">
-            <tr ng-repeat="item in listing"><td><a ng-click="handleItem(item)" href>{{ item.name }}</a><span ng-if="item.watched" class="pull-right">{{ item.watch_date * 1000 | date }}<span class="glyphicon glyphicon-ok"></span></span></td></tr>
-        </table>
-    </div>
-    </div>
-    <div class="row" style="text-align: center;" ng-if="lastPage > 0">
-        <pagination items-per-page="1" total-items="lastPage" page="data.currentPage" max-size="7" class="pagination" boundary-links="true"></pagination>
+    <div ng-if="features.search" ng-show="showSearchBox" class="row" ng-controller="SearchBoxCtrl" ng-include="template"></div>
+    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/cover.html'"></div>
+    <div ng-if="['default', 'episodes'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/default.html'"></div>
+    <div class="row" style="text-align: center;" ng-if="data.lastPage > 1">
+        <pagination items-per-page="1" total-items="data.lastPage" page="data.currentPage" max-size="7" class="pagination" boundary-links="true"></pagination>
     </div>
 </div>

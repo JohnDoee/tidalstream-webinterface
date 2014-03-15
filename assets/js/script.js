@@ -66,6 +66,7 @@
         username: null,
         password: null,
         loggedIn: false,
+        featureList: {},
         sections: [],
         players: {},
         latestListing: null,
@@ -137,6 +138,9 @@
             };
             return ws.onmessage = obj._handleWebSocketMessage;
           });
+        },
+        _disconnectToWebSocket: function() {
+          return obj._websocket.close();
         },
         _updatePlayerTime: function() {
           var player, playerId, _ref, _results;
@@ -300,13 +304,37 @@
         /*
         MISC
          */
+        detectFeatures: function() {
+          $log.debug('Detecting features');
+          return $http.get(this.apiserver).success(function(data) {
+            var info, name, _results;
+            _results = [];
+            for (name in data) {
+              info = data[name];
+              if (info.rel === 'feature') {
+                obj.featureList[name] = info.href;
+                _results.push($rootScope.$emit("feature-" + name));
+              } else if (name === 'motd') {
+                _results.push(console.log('The MOTD:', info));
+              } else {
+                _results.push(void 0);
+              }
+            }
+            return _results;
+          });
+        },
         hasLoggedIn: function(apiserver, username, password) {
           this.apiserver = apiserver;
           this.username = username;
           this.password = password;
           this.loggedIn = true;
-          this.populateNavbar();
-          return this._connectToWebSocket();
+          return this.detectFeatures();
+        },
+        hasLoggedOut: function() {
+          this.loggedIn = false;
+          this.apiserver = null;
+          this.username = null;
+          return this.password = null;
         },
         listFolder: function(path) {
           var deferred;
@@ -359,16 +387,33 @@
           return deferred.promise;
         }
       };
-      $rootScope.$watch((function() {
-        return $location.path();
-      }), function(newValue, oldValue) {
-        if (!(obj.loggedIn || newValue === '/login')) {
-          return $location.path('/login');
-        }
-      });
       if (Modernizr.indexeddb) {
         obj._openMetadataDB();
       }
+      $rootScope.$watch((function() {
+        return $location.path();
+      }), function(newValue, oldValue) {
+        var apiserver, password, username;
+        if (!(obj.loggedIn || newValue === '/login')) {
+          if (!!(localStorage.getItem("autoLogin"))) {
+            apiserver = localStorage.getItem("apiserver");
+            username = localStorage.getItem("username");
+            password = localStorage.getItem("password");
+            return obj.hasLoggedIn(apiserver.replace(/\/+$/, ''), username, password);
+          } else {
+            return $location.path('/login');
+          }
+        }
+      });
+      $rootScope.$on('feature-section', function() {
+        return obj.populateNavbar();
+      });
+      $rootScope.$on('feature-trackalicious', function() {
+        return console.log('got feature trackalicious');
+      });
+      $rootScope.$on('feature-control', function() {
+        return obj._connectToWebSocket();
+      });
       setInterval(obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL);
       setInterval(obj._websocketPing, WEBSOCKET_PING);
       return obj;
@@ -381,24 +426,31 @@
     $scope.password = localStorage.getItem("password");
     $scope.rememberLogin = !!($scope.apiserver && $scope.username);
     $scope.rememberPassword = !!$scope.password;
+    $scope.autoLogin = !!(localStorage.getItem("autoLogin"));
     $location.url($location.path());
     return $scope.saveLoginInfo = function() {
       localStorage.removeItem("apiserver");
       localStorage.removeItem("username");
       localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
       if ($scope.rememberLogin) {
         localStorage.setItem("apiserver", $scope.apiserver);
         localStorage.setItem("username", $scope.username);
       }
       if ($scope.rememberPassword) {
         localStorage.setItem("password", $scope.password);
+        if ($scope.autoLogin) {
+          localStorage.setItem("autoLogin", true);
+        }
       }
       tidalstreamService.hasLoggedIn(this.apiserver.replace(/\/+$/, ''), this.username, this.password);
       return $location.path('/');
     };
   });
 
-  tidalstreamApp.controller('FrontCtrl', function($scope) {});
+  tidalstreamApp.controller('FrontCtrl', function($scope, tidalstreamService) {
+    return $scope.features = tidalstreamService.featureList;
+  });
 
   tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
     $scope.isLoggedIn = function() {
@@ -413,6 +465,7 @@
     $scope.getCurrentDefaultPlayer = function() {
       return tidalstreamService.currentDefaultPlayer;
     };
+    $scope.features = tidalstreamService.featureList;
     $scope.changePath = function(href) {
       $location.url($location.path());
       $location.path('/list');
@@ -430,6 +483,14 @@
         }
       });
     };
+    $scope.logout = function() {
+      localStorage.removeItem("apiserver");
+      localStorage.removeItem("username");
+      localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
+      tidalstreamService.hasLoggedOut();
+      return $location.url('/login');
+    };
     return tidalstreamService.onWebsocketUpdate = function() {
       return $scope.$digest();
     };
@@ -440,11 +501,13 @@
     $scope.listing = [];
     $scope.pageToJumpTo = null;
     $scope.letterPages = {};
+    $scope.features = tidalstreamService.featureList;
     args = $location.search();
     $scope.data = {
       loading: true,
       currentSorting: args.sort,
-      currentPage: parseInt(args.page || 0)
+      lastPage: 1,
+      currentPage: parseInt(args.page || 1)
     };
     $scope.sortOptions = [
       {
@@ -465,11 +528,11 @@
     };
     $scope.handleItem = function(item) {
       if (item.rel === 'folder') {
+        $location.path('/list');
         $location.url($location.path());
         return $location.search('url', item.href);
       } else if (item.rel === 'file') {
-        item.watched = true;
-        item.watch_date = Date.now() / 1000;
+        item.watched = Date.now() / 1000;
         return tidalstreamService.playerPlayItem(tidalstreamService.currentDefaultPlayer, item);
       }
     };
@@ -574,59 +637,66 @@
           continue;
         }
         if (!(firstLetter in $scope.letterPages)) {
-          $scope.letterPages[firstLetter] = parseInt(i / ENTRIES_PER_PAGE);
+          $scope.letterPages[firstLetter] = Math.ceil(i / ENTRIES_PER_PAGE);
         }
         _results.push(i++);
       }
       return _results;
     };
-    return tidalstreamService.listFolder(args.url).then(function(data) {
-      var key, listing, reverse;
-      $scope.data.loading = false;
-      $scope.title = data.title || data.name;
-      $scope.contentType = data.content_type || 'default';
-      listing = flattenListing(data.result);
-      if ($scope.data.currentSorting) {
-        key = $scope.data.currentSorting;
-        reverse = false;
-        if (key[0] === '-') {
-          key = key.slice(1);
-          reverse = true;
-        }
-        listing.sort(function(a, b) {
-          if (a[key] > b[key]) {
-            return 1;
-          } else if (a[key] < b[key]) {
-            return -1;
-          } else {
-            return 0;
+    $scope.listFolder = function(url) {
+      return tidalstreamService.listFolder(url).then(function(data) {
+        var key, listing, reverse;
+        $scope.data.loading = false;
+        $scope.title = data.title || data.name;
+        $scope.contentType = data.content_type || 'default';
+        listing = flattenListing(data.result);
+        if ($scope.data.currentSorting) {
+          key = $scope.data.currentSorting;
+          reverse = false;
+          if (key[0] === '-') {
+            key = key.slice(1);
+            reverse = true;
           }
-        });
-        if (reverse) {
-          listing.reverse();
+          listing.sort(function(a, b) {
+            if (a[key] > b[key]) {
+              return 1;
+            } else if (a[key] < b[key]) {
+              return -1;
+            } else {
+              return 0;
+            }
+          });
+          if (reverse) {
+            listing.reverse();
+          }
         }
-      }
-      generateLetterPages(listing);
-      $scope.lastPage = Math.floor(listing.length / ENTRIES_PER_PAGE);
-      listing = listing.slice($scope.data.currentPage * ENTRIES_PER_PAGE, ($scope.data.currentPage + 1) * ENTRIES_PER_PAGE);
-      addMetadata(listing).then(function(missingMetadata) {
-        var item, _i, _len, _results;
-        _results = [];
-        for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
-          item = missingMetadata[_i];
-          _results.push(tidalstreamService.getMetadata(item).then((function(item) {
-            return function(metadata) {
-              if (metadata) {
-                return item.metadata.result = metadata;
-              }
-            };
-          })(item)));
+        generateLetterPages(listing);
+        $scope.data.lastPage = Math.ceil(listing.length / ENTRIES_PER_PAGE);
+        listing = listing.slice(($scope.data.currentPage - 1) * ENTRIES_PER_PAGE, $scope.data.currentPage * ENTRIES_PER_PAGE);
+        if (tidalstreamService.featureList.metadata) {
+          addMetadata(listing).then(function(missingMetadata) {
+            var item, _i, _len, _results;
+            _results = [];
+            for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
+              item = missingMetadata[_i];
+              _results.push(tidalstreamService.getMetadata(item).then((function(item) {
+                return function(metadata) {
+                  if (metadata) {
+                    return item.metadata.result = metadata;
+                  }
+                };
+              })(item)));
+            }
+            return _results;
+          });
         }
-        return _results;
+        $scope.listing = listing;
+        return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
       });
-      $scope.listing = listing;
-      return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
-    });
+    };
+    if (args.url) {
+      return $scope.listFolder(args.url);
+    }
   });
 
   tidalstreamApp.controller('SearchBoxCtrl', function($scope, $location, tidalstreamService) {
@@ -682,7 +752,7 @@
         }
         if (searchString) {
           $location.url($location.path());
-          _results.push($location.search('url', "" + tidalstreamService.apiserver + "/search/" + section + "/?q=" + (encodeURIComponent(searchString))));
+          _results.push($location.search('url', "" + tidalstreamService.featureList.search.href + "/" + section + "/?q=" + (encodeURIComponent(searchString))));
         } else {
           _results.push(void 0);
         }

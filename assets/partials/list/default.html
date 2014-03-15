@@ -1,0 +1,3 @@
+        <table class="table table-striped">
+            <tr ng-repeat="item in listing"><td><a ng-click="handleItem(item)" href>{{ item.name }}</a><span ng-if="item.watched" class="pull-right">{{ item.watched * 1000 | date }}<span class="glyphicon glyphicon-ok"></span></span></td></tr>
+        </table>

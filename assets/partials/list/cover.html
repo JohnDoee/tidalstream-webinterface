@@ -1,0 +1,8 @@
+        <div class="row" ng-repeat="row in groupedListing">
+            <div ng-repeat="item in row" class="col-md-2 col-xs-6 media-element">
+                <a ng-click="handleItem(item)" href>
+                    <img ng-src="{{ item.metadata.result.cover || 'assets/img/placeholder.jpg' }}?filter=resize&filter-maxwidth=255&filter-maxheight=290" class="img-thumbnail" />
+                    <p style="overflow: hidden; text-overflow: ellipsis;">{{ item.metadata.result.title || item.name }}</p>
+                </a>
+            </div>
+        </div>
