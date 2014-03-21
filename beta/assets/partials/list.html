@@ -1,0 +1,30 @@
+<div ng-show="data.loading">
+    Loading... please wait
+</div>
+
+<div ng-hide="data.loading">
+    <h1 style="overflow: hidden; text-overflow: ellipsis;">{{ title }}</h1>
+    <div ng-if="data.showSearchBox" class="row well" ng-controller="SearchBoxCtrl" ng-include="template"></div>
+    <div class="row well">
+        <div class="col-md-2">
+            <a ng-if="features.search" class="btn btn-default" ng-hide="data.showSearchBox" ng-click="data.showSearchBox = true" href>Show search box</a>
+        </div>
+        <div class="col-md-2">
+            <select ng-show="letterPages" class="form-control" ng-change="jumpToPage()" ng-model="pageToJumpTo" ng-options="letter for (letter, value) in letterPages">
+                <option value="">Jump to</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+        </div>
+        <div class="col-md-2">
+            <select class="form-control" ng-change="switchSorting()" ng-model="data.currentSorting" ng-options="sorting.value as sorting.name for sorting in sortOptions">
+                <option value="">Select sorting</option>
+            </select>
+        </div>
+    </div>
+    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/cover.html'"></div>
+    <div ng-if="['default', 'episodes'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/default.html'"></div>
+    <div class="row" style="text-align: center;" ng-if="data.lastPage > 1">
+        <pagination items-per-page="1" total-items="data.lastPage" page="data.currentPage" max-size="7" class="pagination" boundary-links="true"></pagination>
+    </div>
+</div>
