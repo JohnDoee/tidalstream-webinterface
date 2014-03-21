@@ -1,5 +1,5 @@
 <div class="modal-header">
-    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+    <button ng-click="$dismiss('X marks the spot!')" type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
     <h4 class="modal-title" id="playerModalLabel">Player - {{ player.name }}</h4>
 </div>
 <div class="modal-body" >
@@ -12,13 +12,13 @@
         </div>
         
         <div class="row-fluid" style="text-align: center;">
-        <button ng-click="fastBackward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-fast-backward"></span></button> <!--- goto previous -->
-        <button ng-click="backward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-backward"></span></button> <!--- speed negative *2 -->
-        <button ng-click="stop()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-stop"></button>  <!--- stop -->
-        <button ng-click="pause()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-pause"></span></button>  <!--- speed 0 -->
-        <button ng-click="play()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-play"></span></button>  <!--- speed 1 -->
-        <button ng-click="forward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-forward"></span></button>  <!--- speed *2 -->
-        <button ng-click="fastForward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-fast-forward"></span></button>  <!--- goto next -->
+        <button ng-click="fastBackward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-fast-backward"></span></button>
+        <button ng-click="backward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-backward"></span></button>
+        <button ng-click="stop()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-stop"></button>
+        <button ng-click="pause()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-pause"></span></button>
+        <button ng-click="play()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-play"></span></button>
+        <button ng-click="forward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-forward"></span></button>
+        <button ng-click="fastForward()" type="button" class="btn btn-default"><span class="glyphicon glyphicon-fast-forward"></span></button>
         </div>
         
         <div class="row-fluid" ng-show="player.player.subtitles.length > 0">
@@ -35,8 +35,5 @@
     </div>
     <div ng-hide="player.player.length">
         Currently not playing anything
-    </div>
-    <div class="row-fluid" ng-hide="getCurrentDefaultPlayer() == player.player_id"">
-        <button ng-click="setDefaultPlayer(player)" class="btn btn-default">Set as default player</button>
     </div>
 </div>

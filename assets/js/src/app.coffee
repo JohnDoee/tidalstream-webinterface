@@ -58,19 +58,20 @@ tidalstreamApp.config ($routeProvider) ->
 # trackalicious = tracking on front page
 # motd = console.log
 tidalstreamApp.config ($provide) ->
-    $provide.factory 'tidalstreamService', ($rootScope, $location, $http, $q, $log, $interval) ->
+    $provide.factory 'tidalstreamService', ($rootScope, $location, $http, $q, $log, $interval, $modal) ->
         obj =
             apiserver: null
             username: null
             password: null
             loggedIn: false
+            loadingData: true
             featureList: {}
             sections: []
             players: {}
+            playbackOutput: 'download'
             latestListing: null
             latestListingUrl: null
             searchSchemas: {}
-            currentDefaultPlayer: null
             
             connectedToControl: false
             
@@ -99,10 +100,8 @@ tidalstreamApp.config ($provide) ->
                 obj.players[playerId].player.current_time = timestamp
                 obj._sendToWebsocket 'seek', playerId, time: timestamp
             
-            playerPlayItem: (playerId, item) ->
-                $http.post item.href
-                    .success (data) ->
-                        obj._sendToWebsocket 'open', playerId, url: data.href
+            playerPlayItem: (playerId, href) ->
+                obj._sendToWebsocket 'open', playerId, url: href
             
             playerSetAudioStream: (playerId, trackId) ->
                 obj._sendToWebsocket 'set_audio_stream', playerId, track_id: trackId
@@ -111,18 +110,23 @@ tidalstreamApp.config ($provide) ->
                 obj._sendToWebsocket 'set_subtitle', playerId, track_id: trackId
             
             _websocketPing: ->
-                if obj._websocket
+                if obj._websocket and obj.connectedToControl
                     obj._websocket.send JSON.stringify
                         jsonrpc: "2.0"
                         method: 'ping'
             
             _connectToWebSocket: ->
                 @_getToken().then (token) ->
-                    loginUrl = "ws#{ obj.apiserver.slice 4 }/control/manage/websocket?token=#{ token }"
+                    loginUrl = "ws#{ obj.featureList.control.slice 4 }/manage/websocket?token=#{ token }"
                     ws = obj._websocket = new WebSocket loginUrl
                     
                     ws.onopen = ->
-                        connectedToControl = true
+                        $rootScope.$apply ->
+                            obj.connectedToControl = true
+                    
+                    ws.onclose = ->
+                        $rootScope.$apply ->
+                            obj.connectedToControl = false
                     
                     ws.onmessage = obj._handleWebSocketMessage
             
@@ -151,9 +155,6 @@ tidalstreamApp.config ($provide) ->
                     when 'hello'
                         obj.players[player_id] = data.params
                         
-                        if obj.currentDefaultPlayer == null
-                            obj.currentDefaultPlayer = player_id
-                        
                     when 'update'
                         for key, value of data.params.player
                             obj.players[player_id].player[key] = value
@@ -164,8 +165,8 @@ tidalstreamApp.config ($provide) ->
                     when 'bye'
                         delete obj.players[player_id]
                         
-                        if obj.currentDefaultPlayer == player_id
-                            obj.currentDefaultPlayer = null
+                        if obj.playbackOutput.player_id == player_id
+                            obj.playbackOutput = 'download'
                 
                 if obj.onWebsocketUpdate instanceof Function
                     obj.onWebsocketUpdate()
@@ -177,11 +178,11 @@ tidalstreamApp.config ($provide) ->
                 
                 cmd = 
                     jsonrpc: "2.0"
-                    method: method
-                    player_id: playerId
+                    method: 'command'
+                    params: params || {}
                 
-                if params
-                    cmd.params = params
+                cmd.params.player_id = playerId
+                cmd.params.method = method
                 
                 obj._websocket.send JSON.stringify cmd
             
@@ -209,7 +210,7 @@ tidalstreamApp.config ($provide) ->
                             if data instanceof Array
                                 for item in data
                                     store.put item
-                            else
+                            else if 'title' of data
                                 store.put data
             
             verifyMetadata: (data) ->
@@ -279,8 +280,12 @@ tidalstreamApp.config ($provide) ->
                 if path == @latestListingUrl
                     deferred.resolve @latestListing
                 else
+                    obj.loadingData = true
+                    
                     $http.get path
                         .success (data) ->
+                            obj.loadingData = false
+                            
                             obj.latestListing = data
                             obj.latestListingUrl = path
                             
@@ -288,6 +293,8 @@ tidalstreamApp.config ($provide) ->
                             
                             if Modernizr.indexeddb
                                 obj.verifyMetadata data
+                        .error ->
+                            obj.loadingData = false
                 
                 deferred.promise
             
@@ -321,6 +328,22 @@ tidalstreamApp.config ($provide) ->
                             deferred.resolve data
                 
                 deferred.promise
+            
+            doItemPlayback: (item) ->
+                $http.post item.href
+                    .success (data) ->
+                        if obj.playbackOutput == 'download'
+                            obj.openDownloadModal data
+                        else
+                            obj._sendToWebsocket 'open', obj.playbackOutput.player_id, url: data.href
+            
+            openDownloadModal: (item) ->
+                modalInstance = $modal.open
+                    templateUrl: 'assets/partials/download.html'
+                    controller: 'DownloadCtrl'
+                    resolve:
+                        item: ->
+                            item
         
         if Modernizr.indexeddb
             obj._openMetadataDB()
@@ -338,9 +361,6 @@ tidalstreamApp.config ($provide) ->
         
         $rootScope.$on 'feature-section', ->
             obj.populateNavbar()
-        
-        $rootScope.$on 'feature-trackalicious', ->
-            console.log 'got feature trackalicious'
         
         $rootScope.$on 'feature-control', ->
             obj._connectToWebSocket()
@@ -386,7 +406,9 @@ tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, $modal, tidalstreamS
     $scope.isLoggedIn = -> tidalstreamService.loggedIn
     $scope.getSections = -> tidalstreamService.sections
     $scope.getPlayers = -> tidalstreamService.players
-    $scope.getCurrentDefaultPlayer = -> tidalstreamService.currentDefaultPlayer
+    $scope.playbackOutput = -> tidalstreamService.playbackOutput
+    $scope.getWebsocketStatus = -> tidalstreamService.connectedToControl
+    $scope.tsService = tidalstreamService
     
     $scope.features = tidalstreamService.featureList
     
@@ -414,6 +436,11 @@ tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, $modal, tidalstreamS
         
         $location.url '/login'
     
+    $scope.setPlaybackOutput = ($event, target) ->
+        tidalstreamService.playbackOutput = target
+        $event.stopPropagation()
+        $event.preventDefault()
+    
     tidalstreamService.onWebsocketUpdate = ->
         $scope.$digest()
 
@@ -422,6 +449,9 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, $q, tidals
     $scope.pageToJumpTo = null
     $scope.letterPages = {}
     $scope.features = tidalstreamService.featureList
+    
+    $scope.data =
+        showSearchBox: false
     
     args = $location.search()
     
@@ -455,7 +485,7 @@ tidalstreamApp.controller 'ListCtrl', ($scope, $rootScope, $location, $q, tidals
             $location.search 'url', item.href
         else if item.rel == 'file'
             item.watched = Date.now()/1000
-            tidalstreamService.playerPlayItem tidalstreamService.currentDefaultPlayer, item
+            tidalstreamService.doItemPlayback item
     
     $scope.switchPage = (pageNumber) ->
         $location.search 'page', pageNumber
@@ -609,6 +639,7 @@ tidalstreamApp.controller 'SearchBoxCtrl', ($scope, $location, tidalstreamServic
     
     $scope.doSearch = ->
         searchString = $scope.variables.q || ''
+        console.log searchString
         
         for key, value of $scope.variables
             if key == 'q'
@@ -630,9 +661,9 @@ tidalstreamApp.controller 'SearchBoxCtrl', ($scope, $location, tidalstreamServic
                     value = "\"#{ value }\""
                 searchString += " #{ key }:#{ value }"
             
-            if searchString
-                $location.url $location.path()
-                $location.search 'url', "#{ tidalstreamService.featureList.search.href }/#{ section }/?q=#{ encodeURIComponent(searchString) }"
+        if searchString
+            $location.url $location.path()
+            $location.search 'url', "#{ tidalstreamService.featureList.search }/#{ section }/?q=#{ encodeURIComponent(searchString) }"
     
     $scope.toggleKey = (type, key) ->
         unless type of $scope.variables
@@ -651,14 +682,17 @@ tidalstreamApp.controller 'SearchBoxCtrl', ($scope, $location, tidalstreamServic
         (item) ->
             !func item
 
+tidalstreamApp.controller 'DownloadCtrl', ($scope, $interval, $modalInstance, tidalstreamService, item) ->
+    $scope.item = item
+
 tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, $modalInstance, tidalstreamService, player) ->
     $scope.player = player
     $scope.playerId = player.player_id
     $scope.currentPosition = '00:00:00'
     $scope.currentAudiostream = 0
-    $scope.getCurrentDefaultPlayer = -> tidalstreamService.currentDefaultPlayer
-    $scope.setDefaultPlayer = (player) ->
-        tidalstreamService.currentDefaultPlayer = player.player_id
+    $scope.playbackOutput = -> tidalstreamService.playbackOutput
+    $scope.setDefaultOutput = (player) ->
+        tidalstreamService.playbackOutput = player
     
     $scope.$watch (-> tidalstreamService.players[$scope.playerId] ), (newValue, oldValue) ->
         if $scope.playerId of tidalstreamService.players

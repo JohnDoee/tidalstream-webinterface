@@ -41,3 +41,15 @@ body {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
+.media-element {
+  text-align: center;
+}
+a {
+  cursor: pointer;
+}
+.glyphicon.disconnected {
+  color: #d9534f;
+}
+.glyphicon.connected {
+  color: #5cb85c;
+}

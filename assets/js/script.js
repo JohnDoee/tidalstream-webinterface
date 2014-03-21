@@ -59,20 +59,21 @@
   });
 
   tidalstreamApp.config(function($provide) {
-    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval) {
+    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal) {
       var obj;
       obj = {
         apiserver: null,
         username: null,
         password: null,
         loggedIn: false,
+        loadingData: true,
         featureList: {},
         sections: [],
         players: {},
+        playbackOutput: 'download',
         latestListing: null,
         latestListingUrl: null,
         searchSchemas: {},
-        currentDefaultPlayer: null,
         connectedToControl: false,
         onWebsocketUpdate: null,
         _metadataDB: null,
@@ -102,11 +103,9 @@
             time: timestamp
           });
         },
-        playerPlayItem: function(playerId, item) {
-          return $http.post(item.href).success(function(data) {
-            return obj._sendToWebsocket('open', playerId, {
-              url: data.href
-            });
+        playerPlayItem: function(playerId, href) {
+          return obj._sendToWebsocket('open', playerId, {
+            url: href
           });
         },
         playerSetAudioStream: function(playerId, trackId) {
@@ -120,7 +119,7 @@
           });
         },
         _websocketPing: function() {
-          if (obj._websocket) {
+          if (obj._websocket && obj.connectedToControl) {
             return obj._websocket.send(JSON.stringify({
               jsonrpc: "2.0",
               method: 'ping'
@@ -130,11 +129,17 @@
         _connectToWebSocket: function() {
           return this._getToken().then(function(token) {
             var loginUrl, ws;
-            loginUrl = "ws" + (obj.apiserver.slice(4)) + "/control/manage/websocket?token=" + token;
+            loginUrl = "ws" + (obj.featureList.control.slice(4)) + "/manage/websocket?token=" + token;
             ws = obj._websocket = new WebSocket(loginUrl);
             ws.onopen = function() {
-              var connectedToControl;
-              return connectedToControl = true;
+              return $rootScope.$apply(function() {
+                return obj.connectedToControl = true;
+              });
+            };
+            ws.onclose = function() {
+              return $rootScope.$apply(function() {
+                return obj.connectedToControl = false;
+              });
             };
             return ws.onmessage = obj._handleWebSocketMessage;
           });
@@ -171,9 +176,6 @@
           switch (data.method) {
             case 'hello':
               obj.players[player_id] = data.params;
-              if (obj.currentDefaultPlayer === null) {
-                obj.currentDefaultPlayer = player_id;
-              }
               break;
             case 'update':
               _ref = data.params.player;
@@ -187,8 +189,8 @@
               break;
             case 'bye':
               delete obj.players[player_id];
-              if (obj.currentDefaultPlayer === player_id) {
-                obj.currentDefaultPlayer = null;
+              if (obj.playbackOutput.player_id === player_id) {
+                obj.playbackOutput = 'download';
               }
           }
           if (obj.onWebsocketUpdate instanceof Function) {
@@ -203,12 +205,11 @@
           }
           cmd = {
             jsonrpc: "2.0",
-            method: method,
-            player_id: playerId
+            method: 'command',
+            params: params || {}
           };
-          if (params) {
-            cmd.params = params;
-          }
+          cmd.params.player_id = playerId;
+          cmd.params.method = method;
           return obj._websocket.send(JSON.stringify(cmd));
         },
 
@@ -248,7 +249,7 @@
                   _results1.push(store.put(item));
                 }
                 return _results1;
-              } else {
+              } else if ('title' in data) {
                 return store.put(data);
               }
             }));
@@ -345,13 +346,17 @@
           if (path === this.latestListingUrl) {
             deferred.resolve(this.latestListing);
           } else {
+            obj.loadingData = true;
             $http.get(path).success(function(data) {
+              obj.loadingData = false;
               obj.latestListing = data;
               obj.latestListingUrl = path;
               deferred.resolve(data);
               if (Modernizr.indexeddb) {
                 return obj.verifyMetadata(data);
               }
+            }).error(function() {
+              return obj.loadingData = false;
             });
           }
           return deferred.promise;
@@ -385,6 +390,29 @@
             });
           }
           return deferred.promise;
+        },
+        doItemPlayback: function(item) {
+          return $http.post(item.href).success(function(data) {
+            if (obj.playbackOutput === 'download') {
+              return obj.openDownloadModal(data);
+            } else {
+              return obj._sendToWebsocket('open', obj.playbackOutput.player_id, {
+                url: data.href
+              });
+            }
+          });
+        },
+        openDownloadModal: function(item) {
+          var modalInstance;
+          return modalInstance = $modal.open({
+            templateUrl: 'assets/partials/download.html',
+            controller: 'DownloadCtrl',
+            resolve: {
+              item: function() {
+                return item;
+              }
+            }
+          });
         }
       };
       if (Modernizr.indexeddb) {
@@ -407,9 +435,6 @@
       });
       $rootScope.$on('feature-section', function() {
         return obj.populateNavbar();
-      });
-      $rootScope.$on('feature-trackalicious', function() {
-        return console.log('got feature trackalicious');
       });
       $rootScope.$on('feature-control', function() {
         return obj._connectToWebSocket();
@@ -462,9 +487,13 @@
     $scope.getPlayers = function() {
       return tidalstreamService.players;
     };
-    $scope.getCurrentDefaultPlayer = function() {
-      return tidalstreamService.currentDefaultPlayer;
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
     };
+    $scope.getWebsocketStatus = function() {
+      return tidalstreamService.connectedToControl;
+    };
+    $scope.tsService = tidalstreamService;
     $scope.features = tidalstreamService.featureList;
     $scope.changePath = function(href) {
       $location.url($location.path());
@@ -491,6 +520,11 @@
       tidalstreamService.hasLoggedOut();
       return $location.url('/login');
     };
+    $scope.setPlaybackOutput = function($event, target) {
+      tidalstreamService.playbackOutput = target;
+      $event.stopPropagation();
+      return $event.preventDefault();
+    };
     return tidalstreamService.onWebsocketUpdate = function() {
       return $scope.$digest();
     };
@@ -502,6 +536,9 @@
     $scope.pageToJumpTo = null;
     $scope.letterPages = {};
     $scope.features = tidalstreamService.featureList;
+    $scope.data = {
+      showSearchBox: false
+    };
     args = $location.search();
     $scope.data = {
       loading: true,
@@ -533,7 +570,7 @@
         return $location.search('url', item.href);
       } else if (item.rel === 'file') {
         item.watched = Date.now() / 1000;
-        return tidalstreamService.playerPlayItem(tidalstreamService.currentDefaultPlayer, item);
+        return tidalstreamService.doItemPlayback(item);
       }
     };
     $scope.switchPage = function(pageNumber) {
@@ -721,10 +758,10 @@
       }
     });
     $scope.doSearch = function() {
-      var key, searchString, v, value, _i, _len, _ref, _results;
+      var key, searchString, v, value, _i, _len, _ref;
       searchString = $scope.variables.q || '';
+      console.log(searchString);
       _ref = $scope.variables;
-      _results = [];
       for (key in _ref) {
         value = _ref[key];
         if (key === 'q') {
@@ -750,14 +787,11 @@
           }
           searchString += " " + key + ":" + value;
         }
-        if (searchString) {
-          $location.url($location.path());
-          _results.push($location.search('url', "" + tidalstreamService.featureList.search.href + "/" + section + "/?q=" + (encodeURIComponent(searchString))));
-        } else {
-          _results.push(void 0);
-        }
       }
-      return _results;
+      if (searchString) {
+        $location.url($location.path());
+        return $location.search('url', "" + tidalstreamService.featureList.search + "/" + section + "/?q=" + (encodeURIComponent(searchString)));
+      }
     };
     $scope.toggleKey = function(type, key) {
       var index;
@@ -781,17 +815,21 @@
     };
   });
 
+  tidalstreamApp.controller('DownloadCtrl', function($scope, $interval, $modalInstance, tidalstreamService, item) {
+    return $scope.item = item;
+  });
+
   tidalstreamApp.controller('PlayerCtrl', function($scope, $interval, $modalInstance, tidalstreamService, player) {
     var calculateProgressbarTimestamp, getSpeed, interval;
     $scope.player = player;
     $scope.playerId = player.player_id;
     $scope.currentPosition = '00:00:00';
     $scope.currentAudiostream = 0;
-    $scope.getCurrentDefaultPlayer = function() {
-      return tidalstreamService.currentDefaultPlayer;
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
     };
-    $scope.setDefaultPlayer = function(player) {
-      return tidalstreamService.currentDefaultPlayer = player.player_id;
+    $scope.setDefaultOutput = function(player) {
+      return tidalstreamService.playbackOutput = player;
     };
     $scope.$watch((function() {
       return tidalstreamService.players[$scope.playerId];
