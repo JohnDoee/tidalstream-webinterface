@@ -392,7 +392,9 @@
           return deferred.promise;
         },
         doItemPlayback: function(item) {
+          obj.loadingData = true;
           return $http.post(item.href).success(function(data) {
+            obj.loadingData = false;
             if (obj.playbackOutput === 'download') {
               return obj.openDownloadModal(data);
             } else {

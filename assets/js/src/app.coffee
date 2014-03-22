@@ -330,8 +330,10 @@ tidalstreamApp.config ($provide) ->
                 deferred.promise
             
             doItemPlayback: (item) ->
+                obj.loadingData = true
                 $http.post item.href
                     .success (data) ->
+                        obj.loadingData = false
                         if obj.playbackOutput == 'download'
                             obj.openDownloadModal data
                         else

@@ -40,6 +40,7 @@
       </li>
     </ul>
     <ul class="nav navbar-nav navbar-right">
+      <li><a><span ng-show="tsService.loadingData" class="glyphicon glyphicon-glass spinner"></span></a></li>
       <li><a><span tooltip="Current connection status" tooltip-placement="bottom" class="glyphicon glyphicon-cloud" ng-class="{disconnected: !tsService.connectedToControl, connected: tsService.connectedToControl}"></span></a></li>
       <li><a ng-click="logout()" href>Logout</a></li>
     </ul>
