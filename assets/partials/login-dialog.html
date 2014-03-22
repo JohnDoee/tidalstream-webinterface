@@ -7,7 +7,10 @@
         <input value="remember-login" type="checkbox" ng-model="rememberLogin"> Remember login
     </label>
     <label class="checkbox">
-        <input value="remember-password" type="checkbox" ng-model="rememberPassword"> Remember password
+        <input value="remember-password" type="checkbox" ng-model="rememberPassword" ng-disabled="!rememberLogin"> Remember password
+    </label>
+    <label class="checkbox">
+        <input value="auto-login" type="checkbox" ng-model="autoLogin" ng-disabled="!rememberPassword"> Auto Login
     </label>
     <button class="btn btn-lg btn-primary btn-block" type="submit">Sign in</button>
 </form>

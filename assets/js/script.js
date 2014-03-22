@@ -59,19 +59,21 @@
   });
 
   tidalstreamApp.config(function($provide) {
-    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval) {
+    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal) {
       var obj;
       obj = {
         apiserver: null,
         username: null,
         password: null,
         loggedIn: false,
+        loadingData: true,
+        featureList: {},
         sections: [],
         players: {},
+        playbackOutput: 'download',
         latestListing: null,
         latestListingUrl: null,
         searchSchemas: {},
-        currentDefaultPlayer: null,
         connectedToControl: false,
         onWebsocketUpdate: null,
         _metadataDB: null,
@@ -101,11 +103,9 @@
             time: timestamp
           });
         },
-        playerPlayItem: function(playerId, item) {
-          return $http.post(item.href).success(function(data) {
-            return obj._sendToWebsocket('open', playerId, {
-              url: data.href
-            });
+        playerPlayItem: function(playerId, href) {
+          return obj._sendToWebsocket('open', playerId, {
+            url: href
           });
         },
         playerSetAudioStream: function(playerId, trackId) {
@@ -119,7 +119,7 @@
           });
         },
         _websocketPing: function() {
-          if (obj._websocket) {
+          if (obj._websocket && obj.connectedToControl) {
             return obj._websocket.send(JSON.stringify({
               jsonrpc: "2.0",
               method: 'ping'
@@ -129,14 +129,23 @@
         _connectToWebSocket: function() {
           return this._getToken().then(function(token) {
             var loginUrl, ws;
-            loginUrl = "ws" + (obj.apiserver.slice(4)) + "/control/manage/websocket?token=" + token;
+            loginUrl = "ws" + (obj.featureList.control.slice(4)) + "/manage/websocket?token=" + token;
             ws = obj._websocket = new WebSocket(loginUrl);
             ws.onopen = function() {
-              var connectedToControl;
-              return connectedToControl = true;
+              return $rootScope.$apply(function() {
+                return obj.connectedToControl = true;
+              });
+            };
+            ws.onclose = function() {
+              return $rootScope.$apply(function() {
+                return obj.connectedToControl = false;
+              });
             };
             return ws.onmessage = obj._handleWebSocketMessage;
           });
+        },
+        _disconnectToWebSocket: function() {
+          return obj._websocket.close();
         },
         _updatePlayerTime: function() {
           var player, playerId, _ref, _results;
@@ -167,9 +176,6 @@
           switch (data.method) {
             case 'hello':
               obj.players[player_id] = data.params;
-              if (obj.currentDefaultPlayer === null) {
-                obj.currentDefaultPlayer = player_id;
-              }
               break;
             case 'update':
               _ref = data.params.player;
@@ -183,8 +189,8 @@
               break;
             case 'bye':
               delete obj.players[player_id];
-              if (obj.currentDefaultPlayer === player_id) {
-                obj.currentDefaultPlayer = null;
+              if (obj.playbackOutput.player_id === player_id) {
+                obj.playbackOutput = 'download';
               }
           }
           if (obj.onWebsocketUpdate instanceof Function) {
@@ -199,12 +205,11 @@
           }
           cmd = {
             jsonrpc: "2.0",
-            method: method,
-            player_id: playerId
+            method: 'command',
+            params: params || {}
           };
-          if (params) {
-            cmd.params = params;
-          }
+          cmd.params.player_id = playerId;
+          cmd.params.method = method;
           return obj._websocket.send(JSON.stringify(cmd));
         },
 
@@ -244,7 +249,7 @@
                   _results1.push(store.put(item));
                 }
                 return _results1;
-              } else {
+              } else if ('title' in data) {
                 return store.put(data);
               }
             }));
@@ -300,13 +305,37 @@
         /*
         MISC
          */
+        detectFeatures: function() {
+          $log.debug('Detecting features');
+          return $http.get(this.apiserver).success(function(data) {
+            var info, name, _results;
+            _results = [];
+            for (name in data) {
+              info = data[name];
+              if (info.rel === 'feature') {
+                obj.featureList[name] = info.href;
+                _results.push($rootScope.$emit("feature-" + name));
+              } else if (name === 'motd') {
+                _results.push(console.log('The MOTD:', info));
+              } else {
+                _results.push(void 0);
+              }
+            }
+            return _results;
+          });
+        },
         hasLoggedIn: function(apiserver, username, password) {
           this.apiserver = apiserver;
           this.username = username;
           this.password = password;
           this.loggedIn = true;
-          this.populateNavbar();
-          return this._connectToWebSocket();
+          return this.detectFeatures();
+        },
+        hasLoggedOut: function() {
+          this.loggedIn = false;
+          this.apiserver = null;
+          this.username = null;
+          return this.password = null;
         },
         listFolder: function(path) {
           var deferred;
@@ -317,13 +346,17 @@
           if (path === this.latestListingUrl) {
             deferred.resolve(this.latestListing);
           } else {
+            obj.loadingData = true;
             $http.get(path).success(function(data) {
+              obj.loadingData = false;
               obj.latestListing = data;
               obj.latestListingUrl = path;
               deferred.resolve(data);
               if (Modernizr.indexeddb) {
                 return obj.verifyMetadata(data);
               }
+            }).error(function() {
+              return obj.loadingData = false;
             });
           }
           return deferred.promise;
@@ -357,18 +390,57 @@
             });
           }
           return deferred.promise;
+        },
+        doItemPlayback: function(item) {
+          obj.loadingData = true;
+          return $http.post(item.href).success(function(data) {
+            obj.loadingData = false;
+            if (obj.playbackOutput === 'download') {
+              return obj.openDownloadModal(data);
+            } else {
+              return obj._sendToWebsocket('open', obj.playbackOutput.player_id, {
+                url: data.href
+              });
+            }
+          });
+        },
+        openDownloadModal: function(item) {
+          var modalInstance;
+          return modalInstance = $modal.open({
+            templateUrl: 'assets/partials/download.html',
+            controller: 'DownloadCtrl',
+            resolve: {
+              item: function() {
+                return item;
+              }
+            }
+          });
         }
       };
-      $rootScope.$watch((function() {
-        return $location.path();
-      }), function(newValue, oldValue) {
-        if (!(obj.loggedIn || newValue === '/login')) {
-          return $location.path('/login');
-        }
-      });
       if (Modernizr.indexeddb) {
         obj._openMetadataDB();
       }
+      $rootScope.$watch((function() {
+        return $location.path();
+      }), function(newValue, oldValue) {
+        var apiserver, password, username;
+        if (!(obj.loggedIn || newValue === '/login')) {
+          if (!!(localStorage.getItem("autoLogin"))) {
+            apiserver = localStorage.getItem("apiserver");
+            username = localStorage.getItem("username");
+            password = localStorage.getItem("password");
+            return obj.hasLoggedIn(apiserver.replace(/\/+$/, ''), username, password);
+          } else {
+            return $location.path('/login');
+          }
+        }
+      });
+      $rootScope.$on('feature-section', function() {
+        return obj.populateNavbar();
+      });
+      $rootScope.$on('feature-control', function() {
+        return obj._connectToWebSocket();
+      });
       setInterval(obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL);
       setInterval(obj._websocketPing, WEBSOCKET_PING);
       return obj;
@@ -381,24 +453,31 @@
     $scope.password = localStorage.getItem("password");
     $scope.rememberLogin = !!($scope.apiserver && $scope.username);
     $scope.rememberPassword = !!$scope.password;
+    $scope.autoLogin = !!(localStorage.getItem("autoLogin"));
     $location.url($location.path());
     return $scope.saveLoginInfo = function() {
       localStorage.removeItem("apiserver");
       localStorage.removeItem("username");
       localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
       if ($scope.rememberLogin) {
         localStorage.setItem("apiserver", $scope.apiserver);
         localStorage.setItem("username", $scope.username);
       }
       if ($scope.rememberPassword) {
         localStorage.setItem("password", $scope.password);
+        if ($scope.autoLogin) {
+          localStorage.setItem("autoLogin", true);
+        }
       }
       tidalstreamService.hasLoggedIn(this.apiserver.replace(/\/+$/, ''), this.username, this.password);
       return $location.path('/');
     };
   });
 
-  tidalstreamApp.controller('FrontCtrl', function($scope) {});
+  tidalstreamApp.controller('FrontCtrl', function($scope, tidalstreamService) {
+    return $scope.features = tidalstreamService.featureList;
+  });
 
   tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
     $scope.isLoggedIn = function() {
@@ -410,9 +489,14 @@
     $scope.getPlayers = function() {
       return tidalstreamService.players;
     };
-    $scope.getCurrentDefaultPlayer = function() {
-      return tidalstreamService.currentDefaultPlayer;
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
     };
+    $scope.getWebsocketStatus = function() {
+      return tidalstreamService.connectedToControl;
+    };
+    $scope.tsService = tidalstreamService;
+    $scope.features = tidalstreamService.featureList;
     $scope.changePath = function(href) {
       $location.url($location.path());
       $location.path('/list');
@@ -430,6 +514,19 @@
         }
       });
     };
+    $scope.logout = function() {
+      localStorage.removeItem("apiserver");
+      localStorage.removeItem("username");
+      localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
+      tidalstreamService.hasLoggedOut();
+      return $location.url('/login');
+    };
+    $scope.setPlaybackOutput = function($event, target) {
+      tidalstreamService.playbackOutput = target;
+      $event.stopPropagation();
+      return $event.preventDefault();
+    };
     return tidalstreamService.onWebsocketUpdate = function() {
       return $scope.$digest();
     };
@@ -440,11 +537,16 @@
     $scope.listing = [];
     $scope.pageToJumpTo = null;
     $scope.letterPages = {};
+    $scope.features = tidalstreamService.featureList;
+    $scope.data = {
+      showSearchBox: false
+    };
     args = $location.search();
     $scope.data = {
       loading: true,
       currentSorting: args.sort,
-      currentPage: parseInt(args.page || 0)
+      lastPage: 1,
+      currentPage: parseInt(args.page || 1)
     };
     $scope.sortOptions = [
       {
@@ -465,12 +567,12 @@
     };
     $scope.handleItem = function(item) {
       if (item.rel === 'folder') {
+        $location.path('/list');
         $location.url($location.path());
         return $location.search('url', item.href);
       } else if (item.rel === 'file') {
-        item.watched = true;
-        item.watch_date = Date.now() / 1000;
-        return tidalstreamService.playerPlayItem(tidalstreamService.currentDefaultPlayer, item);
+        item.watched = Date.now() / 1000;
+        return tidalstreamService.doItemPlayback(item);
       }
     };
     $scope.switchPage = function(pageNumber) {
@@ -574,59 +676,66 @@
           continue;
         }
         if (!(firstLetter in $scope.letterPages)) {
-          $scope.letterPages[firstLetter] = parseInt(i / ENTRIES_PER_PAGE);
+          $scope.letterPages[firstLetter] = Math.ceil(i / ENTRIES_PER_PAGE);
         }
         _results.push(i++);
       }
       return _results;
     };
-    return tidalstreamService.listFolder(args.url).then(function(data) {
-      var key, listing, reverse;
-      $scope.data.loading = false;
-      $scope.title = data.title || data.name;
-      $scope.contentType = data.content_type || 'default';
-      listing = flattenListing(data.result);
-      if ($scope.data.currentSorting) {
-        key = $scope.data.currentSorting;
-        reverse = false;
-        if (key[0] === '-') {
-          key = key.slice(1);
-          reverse = true;
-        }
-        listing.sort(function(a, b) {
-          if (a[key] > b[key]) {
-            return 1;
-          } else if (a[key] < b[key]) {
-            return -1;
-          } else {
-            return 0;
+    $scope.listFolder = function(url) {
+      return tidalstreamService.listFolder(url).then(function(data) {
+        var key, listing, reverse;
+        $scope.data.loading = false;
+        $scope.title = data.title || data.name;
+        $scope.contentType = data.content_type || 'default';
+        listing = flattenListing(data.result);
+        if ($scope.data.currentSorting) {
+          key = $scope.data.currentSorting;
+          reverse = false;
+          if (key[0] === '-') {
+            key = key.slice(1);
+            reverse = true;
           }
-        });
-        if (reverse) {
-          listing.reverse();
+          listing.sort(function(a, b) {
+            if (a[key] > b[key]) {
+              return 1;
+            } else if (a[key] < b[key]) {
+              return -1;
+            } else {
+              return 0;
+            }
+          });
+          if (reverse) {
+            listing.reverse();
+          }
         }
-      }
-      generateLetterPages(listing);
-      $scope.lastPage = Math.floor(listing.length / ENTRIES_PER_PAGE);
-      listing = listing.slice($scope.data.currentPage * ENTRIES_PER_PAGE, ($scope.data.currentPage + 1) * ENTRIES_PER_PAGE);
-      addMetadata(listing).then(function(missingMetadata) {
-        var item, _i, _len, _results;
-        _results = [];
-        for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
-          item = missingMetadata[_i];
-          _results.push(tidalstreamService.getMetadata(item).then((function(item) {
-            return function(metadata) {
-              if (metadata) {
-                return item.metadata.result = metadata;
-              }
-            };
-          })(item)));
+        generateLetterPages(listing);
+        $scope.data.lastPage = Math.ceil(listing.length / ENTRIES_PER_PAGE);
+        listing = listing.slice(($scope.data.currentPage - 1) * ENTRIES_PER_PAGE, $scope.data.currentPage * ENTRIES_PER_PAGE);
+        if (tidalstreamService.featureList.metadata) {
+          addMetadata(listing).then(function(missingMetadata) {
+            var item, _i, _len, _results;
+            _results = [];
+            for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
+              item = missingMetadata[_i];
+              _results.push(tidalstreamService.getMetadata(item).then((function(item) {
+                return function(metadata) {
+                  if (metadata) {
+                    return item.metadata.result = metadata;
+                  }
+                };
+              })(item)));
+            }
+            return _results;
+          });
         }
-        return _results;
+        $scope.listing = listing;
+        return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
       });
-      $scope.listing = listing;
-      return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
-    });
+    };
+    if (args.url) {
+      return $scope.listFolder(args.url);
+    }
   });
 
   tidalstreamApp.controller('SearchBoxCtrl', function($scope, $location, tidalstreamService) {
@@ -651,10 +760,10 @@
       }
     });
     $scope.doSearch = function() {
-      var key, searchString, v, value, _i, _len, _ref, _results;
+      var key, searchString, v, value, _i, _len, _ref;
       searchString = $scope.variables.q || '';
+      console.log(searchString);
       _ref = $scope.variables;
-      _results = [];
       for (key in _ref) {
         value = _ref[key];
         if (key === 'q') {
@@ -680,14 +789,11 @@
           }
           searchString += " " + key + ":" + value;
         }
-        if (searchString) {
-          $location.url($location.path());
-          _results.push($location.search('url', "" + tidalstreamService.apiserver + "/search/" + section + "/?q=" + (encodeURIComponent(searchString))));
-        } else {
-          _results.push(void 0);
-        }
       }
-      return _results;
+      if (searchString) {
+        $location.url($location.path());
+        return $location.search('url', "" + tidalstreamService.featureList.search + "/" + section + "/?q=" + (encodeURIComponent(searchString)));
+      }
     };
     $scope.toggleKey = function(type, key) {
       var index;
@@ -711,17 +817,21 @@
     };
   });
 
+  tidalstreamApp.controller('DownloadCtrl', function($scope, $interval, $modalInstance, tidalstreamService, item) {
+    return $scope.item = item;
+  });
+
   tidalstreamApp.controller('PlayerCtrl', function($scope, $interval, $modalInstance, tidalstreamService, player) {
     var calculateProgressbarTimestamp, getSpeed, interval;
     $scope.player = player;
     $scope.playerId = player.player_id;
     $scope.currentPosition = '00:00:00';
     $scope.currentAudiostream = 0;
-    $scope.getCurrentDefaultPlayer = function() {
-      return tidalstreamService.currentDefaultPlayer;
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
     };
-    $scope.setDefaultPlayer = function(player) {
-      return tidalstreamService.currentDefaultPlayer = player.player_id;
+    $scope.setDefaultOutput = function(player) {
+      return tidalstreamService.playbackOutput = player;
     };
     $scope.$watch((function() {
       return tidalstreamService.players[$scope.playerId];

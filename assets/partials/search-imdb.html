@@ -32,7 +32,10 @@
             </select>
         </div>
         <div class="form-group col-md-3">    
-            
+            <label for="language">Language:</label>
+            <select id="language" class="form-control" ng-model="variables.languages" ng-options="language for language in schema.languages">
+                <option value="">Any</option>
+            </select>
         </div>
       </div>
       <button type="submit" class="btn btn-default">Search</button>

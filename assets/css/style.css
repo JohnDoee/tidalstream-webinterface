@@ -41,3 +41,53 @@ body {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }
+.media-element {
+  text-align: center;
+}
+a {
+  cursor: pointer;
+}
+.glyphicon.disconnected {
+  color: #d9534f;
+}
+.glyphicon.connected {
+  color: #5cb85c;
+}
+.glyphicon.spinner {
+  color: #FF00B2;
+  -webkit-animation: spin .5s infinite linear;
+  -moz-animation: spin .5s infinite linear;
+  -o-animation: spin .5s infinite linear;
+  animation: spin .5s infinite linear;
+     -webkit-transform-origin: 50% 50%;
+         transform-origin:50% 50%;
+         -ms-transform-origin:50% 50%; /* IE 9 */
+  
+}
+
+@-moz-keyframes spin {
+  from {
+    -moz-transform: rotate(0deg);
+  }
+  to {
+    -moz-transform: rotate(360deg);
+  }
+}
+
+@-webkit-keyframes spin {
+  from {
+    -webkit-transform: rotate(0deg);
+  }
+  to {
+    -webkit-transform: rotate(360deg);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
