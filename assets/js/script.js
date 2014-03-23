@@ -25,7 +25,7 @@
 
   KNOWN_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-  tidalstreamApp = angular.module('tidalstreamApp', ['ngRoute', 'ui.bootstrap']);
+  tidalstreamApp = angular.module('tidalstreamApp', ['ngRoute', 'ngTouch', 'ui.bootstrap']);
 
   tidalstreamApp.config(function($provide, $httpProvider) {
     $provide.factory('authenticationAndUrlHttpInterceptor', function($injector) {
@@ -58,8 +58,477 @@
     });
   });
 
+  tidalstreamApp.controller('DownloadCtrl', function($scope, $interval, $modalInstance, tidalstreamService, item) {
+    return $scope.item = item;
+  });
+
+  tidalstreamApp.controller('FrontCtrl', function($scope, tidalstreamService) {
+    return $scope.features = tidalstreamService.featureList;
+  });
+
+  tidalstreamApp.controller('ListCtrl', function($scope, $rootScope, $location, $q, tidalstreamService) {
+    var addMetadata, args, flattenListing, generateGroupedListing, generateLetterPages;
+    $scope.listing = [];
+    $scope.pageToJumpTo = null;
+    $scope.letterPages = {};
+    $scope.features = tidalstreamService.featureList;
+    $scope.data = {
+      showSearchBox: false
+    };
+    args = $location.search();
+    $scope.data = {
+      loading: true,
+      currentSorting: args.sort,
+      lastPage: 1,
+      currentPage: parseInt(args.page || 1)
+    };
+    $scope.sortOptions = [
+      {
+        name: 'Date',
+        value: '-date'
+      }, {
+        name: 'Name',
+        value: 'name'
+      }
+    ];
+    $scope.$watch("data.currentPage", function(newValue, oldValue) {
+      if (newValue !== oldValue) {
+        return $scope.switchPage(newValue);
+      }
+    });
+    $scope.jumpToPage = function() {
+      return $scope.switchPage($scope.pageToJumpTo);
+    };
+    $scope.handleItem = function(item) {
+      if (item.rel === 'folder') {
+        $location.path('/list');
+        $location.url($location.path());
+        return $location.search('url', item.href);
+      } else if (item.rel === 'file') {
+        item.watched = Date.now() / 1000;
+        return tidalstreamService.doItemPlayback(item);
+      }
+    };
+    $scope.switchPage = function(pageNumber) {
+      return $location.search('page', pageNumber);
+    };
+    $scope.switchSorting = function() {
+      return $location.search('sort', $scope.data.currentSorting);
+    };
+    generateGroupedListing = function(listing, itemsPerRow) {
+      var i, retval;
+      retval = [];
+      i = 0;
+      while (i * itemsPerRow < listing.length) {
+        retval.push(listing.slice(i * itemsPerRow, (i + 1) * itemsPerRow));
+        i++;
+      }
+      return retval;
+    };
+    addMetadata = function(listing) {
+      var deferred, i, item, missingMetadata, req, store, _i, _len;
+      deferred = $q.defer();
+      if (Modernizr.indexeddb) {
+        missingMetadata = [];
+        i = 0;
+        store = tidalstreamService._getObjectStore('readonly');
+        for (_i = 0, _len = listing.length; _i < _len; _i++) {
+          item = listing[_i];
+          if (!('metadata' in item)) {
+            continue;
+          }
+          i++;
+          req = store.get(item.metadata.href);
+          req.onsuccess = (function(item) {
+            return function(evt) {
+              var value;
+              i--;
+              value = evt.target.result;
+              if (value) {
+                $scope.$apply(function() {
+                  return item.metadata.result = value;
+                });
+              } else {
+                missingMetadata.push(item);
+              }
+              if (i === 0) {
+                return deferred.resolve(missingMetadata);
+              }
+            };
+          })(item);
+        }
+      } else {
+        deferred.resolve((function() {
+          var _j, _len1, _results;
+          _results = [];
+          for (_j = 0, _len1 = listing.length; _j < _len1; _j++) {
+            item = listing[_j];
+            if ('metadata' in item) {
+              _results.push(item);
+            }
+          }
+          return _results;
+        })());
+      }
+      return deferred.promise;
+    };
+    flattenListing = function(listing) {
+      var flatten, retval;
+      retval = [];
+      if (listing) {
+        flatten = function(items) {
+          var item, _i, _len, _results;
+          _results = [];
+          for (_i = 0, _len = items.length; _i < _len; _i++) {
+            item = items[_i];
+            if ('result' in item) {
+              _results.push(flatten(item.result));
+            } else {
+              _results.push(retval.push(item));
+            }
+          }
+          return _results;
+        };
+        flatten(listing);
+      }
+      return retval;
+    };
+    generateLetterPages = function(listing) {
+      var firstLetter, i, item, _i, _len, _results;
+      $scope.letterPages = {
+        '#': 0
+      };
+      i = 0;
+      _results = [];
+      for (_i = 0, _len = listing.length; _i < _len; _i++) {
+        item = listing[_i];
+        if (!item.name) {
+          continue;
+        }
+        firstLetter = item.name[0].toUpperCase();
+        if (__indexOf.call(KNOWN_LETTERS, firstLetter) < 0) {
+          continue;
+        }
+        if (!(firstLetter in $scope.letterPages)) {
+          $scope.letterPages[firstLetter] = Math.ceil(i / ENTRIES_PER_PAGE);
+        }
+        _results.push(i++);
+      }
+      return _results;
+    };
+    $scope.listFolder = function(url) {
+      return tidalstreamService.listFolder(url).then(function(data) {
+        var key, listing, reverse;
+        $scope.data.loading = false;
+        $scope.title = data.title || data.name;
+        $scope.contentType = data.content_type || 'default';
+        listing = flattenListing(data.result);
+        if ($scope.data.currentSorting) {
+          key = $scope.data.currentSorting;
+          reverse = false;
+          if (key[0] === '-') {
+            key = key.slice(1);
+            reverse = true;
+          }
+          listing.sort(function(a, b) {
+            if (a[key] > b[key]) {
+              return 1;
+            } else if (a[key] < b[key]) {
+              return -1;
+            } else {
+              return 0;
+            }
+          });
+          if (reverse) {
+            listing.reverse();
+          }
+        }
+        generateLetterPages(listing);
+        $scope.data.lastPage = Math.ceil(listing.length / ENTRIES_PER_PAGE);
+        listing = listing.slice(($scope.data.currentPage - 1) * ENTRIES_PER_PAGE, $scope.data.currentPage * ENTRIES_PER_PAGE);
+        if (tidalstreamService.featureList.metadata) {
+          addMetadata(listing).then(function(missingMetadata) {
+            var item, _i, _len, _results;
+            _results = [];
+            for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
+              item = missingMetadata[_i];
+              _results.push(tidalstreamService.getMetadata(item).then((function(item) {
+                return function(metadata) {
+                  if (metadata) {
+                    return item.metadata.result = metadata;
+                  }
+                };
+              })(item)));
+            }
+            return _results;
+          });
+        }
+        $scope.listing = listing;
+        return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
+      });
+    };
+    if (args.url) {
+      return $scope.listFolder(args.url);
+    }
+  });
+
+  tidalstreamApp.controller('LoginCtrl', function($scope, $location, tidalstreamService) {
+    $scope.apiserver = localStorage.getItem("apiserver");
+    $scope.username = localStorage.getItem("username");
+    $scope.password = localStorage.getItem("password");
+    $scope.rememberLogin = !!($scope.apiserver && $scope.username);
+    $scope.rememberPassword = !!$scope.password;
+    $scope.autoLogin = !!(localStorage.getItem("autoLogin"));
+    $location.url($location.path());
+    return $scope.saveLoginInfo = function() {
+      localStorage.removeItem("apiserver");
+      localStorage.removeItem("username");
+      localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
+      if ($scope.rememberLogin) {
+        localStorage.setItem("apiserver", $scope.apiserver);
+        localStorage.setItem("username", $scope.username);
+      }
+      if ($scope.rememberPassword) {
+        localStorage.setItem("password", $scope.password);
+        if ($scope.autoLogin) {
+          localStorage.setItem("autoLogin", true);
+        }
+      }
+      tidalstreamService.hasLoggedIn(this.apiserver.replace(/\/+$/, ''), this.username, this.password);
+      return $location.path('/');
+    };
+  });
+
+  tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
+    $scope.isLoggedIn = function() {
+      return tidalstreamService.loggedIn;
+    };
+    $scope.getSections = function() {
+      return tidalstreamService.sections;
+    };
+    $scope.getPlayers = function() {
+      return tidalstreamService.players;
+    };
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
+    };
+    $scope.getWebsocketStatus = function() {
+      return tidalstreamService.connectedToControl;
+    };
+    $scope.tsService = tidalstreamService;
+    $scope.features = tidalstreamService.featureList;
+    $scope.changePath = function(href) {
+      $location.url($location.path());
+      $location.path('/list');
+      return $location.search('url', href);
+    };
+    $scope.openPlayer = function(player) {
+      var modalInstance;
+      return modalInstance = $modal.open({
+        templateUrl: 'assets/partials/player.html',
+        controller: 'PlayerCtrl',
+        resolve: {
+          player: function() {
+            return player;
+          }
+        }
+      });
+    };
+    $scope.logout = function() {
+      localStorage.removeItem("apiserver");
+      localStorage.removeItem("username");
+      localStorage.removeItem("password");
+      localStorage.removeItem("autoLogin");
+      tidalstreamService.hasLoggedOut();
+      return $location.url('/login');
+    };
+    $scope.setPlaybackOutput = function($event, target) {
+      tidalstreamService.playbackOutput = target;
+      $event.stopPropagation();
+      return $event.preventDefault();
+    };
+    return tidalstreamService.onWebsocketUpdate = function() {
+      return $scope.$digest();
+    };
+  });
+
+  tidalstreamApp.controller('PlayerCtrl', function($scope, $interval, $modalInstance, tidalstreamService, player) {
+    var calculateProgressbarTimestamp, getSpeed, interval;
+    $scope.player = player;
+    $scope.playerId = player.player_id;
+    $scope.currentPosition = '00:00:00';
+    $scope.currentAudiostream = 0;
+    $scope.playbackOutput = function() {
+      return tidalstreamService.playbackOutput;
+    };
+    $scope.setDefaultOutput = function(player) {
+      return tidalstreamService.playbackOutput = player;
+    };
+    $scope.$watch((function() {
+      return tidalstreamService.players[$scope.playerId];
+    }), function(newValue, oldValue) {
+      if ($scope.playerId in tidalstreamService.players) {
+        return $scope.player = tidalstreamService.players[$scope.playerId];
+      } else {
+        return $scope.player = null;
+      }
+    });
+    $scope.fastBackward = function() {
+      return tidalstreamService.playerPrevious($scope.player.player_id);
+    };
+    $scope.backward = function() {
+      var speed;
+      speed = getSpeed(-1);
+      if (speed !== null) {
+        return tidalstreamService.playerSetSpeed($scope.player.player_id, speed);
+      }
+    };
+    $scope.stop = function() {
+      return tidalstreamService.playerStop($scope.player.player_id);
+    };
+    $scope.pause = function() {
+      return tidalstreamService.playerSetSpeed($scope.player.player_id, 0);
+    };
+    $scope.play = function() {
+      return tidalstreamService.playerSetSpeed($scope.player.player_id, 1);
+    };
+    $scope.forward = function() {
+      var speed;
+      speed = getSpeed(1);
+      if (speed !== null) {
+        return tidalstreamService.playerSetSpeed($scope.player.player_id, speed);
+      }
+    };
+    $scope.fastForward = function() {
+      return tidalstreamService.playerNext($scope.player.player_id);
+    };
+    $scope.seek = function(timestamp) {
+      return tidalstreamService.playerSeek($scope.player.player_id, timestamp);
+    };
+    $scope.calculateCurrentPosition = function(event) {
+      return $scope.currentPosition = calculateProgressbarTimestamp(event);
+    };
+    $scope.clickOnProgressbar = function(event) {
+      return $scope.seek(calculateProgressbarTimestamp(event));
+    };
+    $scope.changedSubtitle = function() {
+      return tidalstreamService.playerSetSubtitle($scope.player.player_id, $scope.player.player.current_subtitle);
+    };
+    $scope.changedAudioStream = function() {
+      return tidalstreamService.playerSetAudioStream($scope.player.player_id, $scope.player.player.current_audiostream);
+    };
+    interval = $interval((function() {}), 1000);
+    $scope.$originalDestroy = $scope.$destroy;
+    $scope.$destroy = function() {
+      $interval.cancel(interval);
+      return $scope.$originalDestroy();
+    };
+    calculateProgressbarTimestamp = function(event) {
+      var clickWidth, width;
+      width = event.currentTarget.offsetWidth;
+      clickWidth = event.offsetX;
+      return (clickWidth / width) * $scope.player.player.length;
+    };
+    return getSpeed = function(direction) {
+      var currentSpeed, index, speeds;
+      speeds = $scope.player.features.speed;
+      currentSpeed = $scope.player.player.speed;
+      if (__indexOf.call(speeds, 1) < 0) {
+        speeds.push(1);
+      }
+      speeds.sort(function(a, b) {
+        return a - b;
+      });
+      index = speeds.indexOf(currentSpeed);
+      if (index === -1) {
+        return null;
+      }
+      return speeds[index + direction] || currentSpeed;
+    };
+  });
+
+  tidalstreamApp.controller('SearchBoxCtrl', function($scope, $location, tidalstreamService) {
+    var currentUrl, section, templateMap;
+    $scope.template = "assets/partials/search-loading.html";
+    $scope.variables = {};
+    $scope.schema = {};
+    $scope.Math = window.Math;
+    currentUrl = $location.search().url;
+    section = currentUrl.split('/')[4];
+    templateMap = {
+      anime: 'mal',
+      tvshows: 'imdb',
+      movies: 'imdb'
+    };
+    tidalstreamService.getSearchSchema(section).then(function(data) {
+      if (data.status === 'error' || !(data.type in templateMap)) {
+        return $scope.template = 'assets/partials/search-nosearch.html';
+      } else {
+        $scope.schema = data.schema;
+        return $scope.template = "assets/partials/search-" + templateMap[data.type] + ".html";
+      }
+    });
+    $scope.doSearch = function() {
+      var key, searchString, v, value, _i, _len, _ref;
+      searchString = $scope.variables.q || '';
+      console.log(searchString);
+      _ref = $scope.variables;
+      for (key in _ref) {
+        value = _ref[key];
+        if (key === 'q') {
+          continue;
+        }
+        if (value instanceof Array) {
+          for (_i = 0, _len = value.length; _i < _len; _i++) {
+            v = value[_i];
+            if (!v) {
+              continue;
+            }
+            if (v.indexOf(' ') > -1) {
+              v = "\"" + v + "\"";
+            }
+            searchString += " " + key + ":" + v;
+          }
+        } else {
+          if (!value) {
+            continue;
+          }
+          if (value.indexOf(' ') > -1) {
+            value = "\"" + value + "\"";
+          }
+          searchString += " " + key + ":" + value;
+        }
+      }
+      if (searchString) {
+        $location.url($location.path());
+        return $location.search('url', "" + tidalstreamService.featureList.search + "/" + section + "/?q=" + (encodeURIComponent(searchString)));
+      }
+    };
+    $scope.toggleKey = function(type, key) {
+      var index;
+      if (!(type in $scope.variables)) {
+        $scope.variables[type] = [];
+      }
+      index = $scope.variables[type].indexOf(key);
+      if (index > -1) {
+        return $scope.variables[type].splice(index, 1);
+      } else {
+        return $scope.variables[type].push(key);
+      }
+    };
+    $scope.isYear = function(value) {
+      return value.match(/^(19|20)\d{2}$/) !== null;
+    };
+    return $scope.not = function(func) {
+      return function(item) {
+        return !func(item);
+      };
+    };
+  });
+
   tidalstreamApp.config(function($provide) {
-    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal) {
+    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal, $timeout) {
       var obj;
       obj = {
         apiserver: null,
@@ -78,6 +547,7 @@
         onWebsocketUpdate: null,
         _metadataDB: null,
         _websocket: null,
+        _connectStepBack: false,
 
         /*
         PLAYER RELATED STUFF
@@ -127,22 +597,33 @@
           }
         },
         _connectToWebSocket: function() {
-          return this._getToken().then(function(token) {
+          var prepareReconnect;
+          prepareReconnect = function() {
+            console.log('preparing', (obj._connectStepBack ? 10000 : 0));
+            $timeout((function() {
+              return obj._connectToWebSocket();
+            }), (obj._connectStepBack ? 10000 : 0));
+            return obj._connectStepBack = true;
+          };
+          return this._getToken().then((function(token) {
             var loginUrl, ws;
             loginUrl = "ws" + (obj.featureList.control.slice(4)) + "/manage/websocket?token=" + token;
             ws = obj._websocket = new WebSocket(loginUrl);
             ws.onopen = function() {
+              obj._connectStepBack = false;
               return $rootScope.$apply(function() {
                 return obj.connectedToControl = true;
               });
             };
             ws.onclose = function() {
-              return $rootScope.$apply(function() {
+              $rootScope.$apply(function() {
                 return obj.connectedToControl = false;
               });
+              return prepareReconnect();
             };
+            ws.onerror = prepareReconnect;
             return ws.onmessage = obj._handleWebSocketMessage;
-          });
+          }), prepareReconnect);
         },
         _disconnectToWebSocket: function() {
           return obj._websocket.close();
@@ -166,6 +647,8 @@
           deferred = $q.defer();
           $http.get("" + obj.apiserver + "/tokenauth/").success(function(data) {
             return deferred.resolve(data.token);
+          }).error(function(data, status, headers, config) {
+            return deferred.reject('failed to fetch url');
           });
           return deferred.promise;
         },
@@ -176,6 +659,9 @@
           switch (data.method) {
             case 'hello':
               obj.players[player_id] = data.params;
+              if (obj.playbackOutput.player_id === player_id) {
+                obj.playbackOutput = obj.players[player_id];
+              }
               break;
             case 'update':
               _ref = data.params.player;
@@ -445,475 +931,6 @@
       setInterval(obj._websocketPing, WEBSOCKET_PING);
       return obj;
     });
-  });
-
-  tidalstreamApp.controller('LoginCtrl', function($scope, $location, tidalstreamService) {
-    $scope.apiserver = localStorage.getItem("apiserver");
-    $scope.username = localStorage.getItem("username");
-    $scope.password = localStorage.getItem("password");
-    $scope.rememberLogin = !!($scope.apiserver && $scope.username);
-    $scope.rememberPassword = !!$scope.password;
-    $scope.autoLogin = !!(localStorage.getItem("autoLogin"));
-    $location.url($location.path());
-    return $scope.saveLoginInfo = function() {
-      localStorage.removeItem("apiserver");
-      localStorage.removeItem("username");
-      localStorage.removeItem("password");
-      localStorage.removeItem("autoLogin");
-      if ($scope.rememberLogin) {
-        localStorage.setItem("apiserver", $scope.apiserver);
-        localStorage.setItem("username", $scope.username);
-      }
-      if ($scope.rememberPassword) {
-        localStorage.setItem("password", $scope.password);
-        if ($scope.autoLogin) {
-          localStorage.setItem("autoLogin", true);
-        }
-      }
-      tidalstreamService.hasLoggedIn(this.apiserver.replace(/\/+$/, ''), this.username, this.password);
-      return $location.path('/');
-    };
-  });
-
-  tidalstreamApp.controller('FrontCtrl', function($scope, tidalstreamService) {
-    return $scope.features = tidalstreamService.featureList;
-  });
-
-  tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
-    $scope.isLoggedIn = function() {
-      return tidalstreamService.loggedIn;
-    };
-    $scope.getSections = function() {
-      return tidalstreamService.sections;
-    };
-    $scope.getPlayers = function() {
-      return tidalstreamService.players;
-    };
-    $scope.playbackOutput = function() {
-      return tidalstreamService.playbackOutput;
-    };
-    $scope.getWebsocketStatus = function() {
-      return tidalstreamService.connectedToControl;
-    };
-    $scope.tsService = tidalstreamService;
-    $scope.features = tidalstreamService.featureList;
-    $scope.changePath = function(href) {
-      $location.url($location.path());
-      $location.path('/list');
-      return $location.search('url', href);
-    };
-    $scope.openPlayer = function(player) {
-      var modalInstance;
-      return modalInstance = $modal.open({
-        templateUrl: 'assets/partials/player.html',
-        controller: 'PlayerCtrl',
-        resolve: {
-          player: function() {
-            return player;
-          }
-        }
-      });
-    };
-    $scope.logout = function() {
-      localStorage.removeItem("apiserver");
-      localStorage.removeItem("username");
-      localStorage.removeItem("password");
-      localStorage.removeItem("autoLogin");
-      tidalstreamService.hasLoggedOut();
-      return $location.url('/login');
-    };
-    $scope.setPlaybackOutput = function($event, target) {
-      tidalstreamService.playbackOutput = target;
-      $event.stopPropagation();
-      return $event.preventDefault();
-    };
-    return tidalstreamService.onWebsocketUpdate = function() {
-      return $scope.$digest();
-    };
-  });
-
-  tidalstreamApp.controller('ListCtrl', function($scope, $rootScope, $location, $q, tidalstreamService) {
-    var addMetadata, args, flattenListing, generateGroupedListing, generateLetterPages;
-    $scope.listing = [];
-    $scope.pageToJumpTo = null;
-    $scope.letterPages = {};
-    $scope.features = tidalstreamService.featureList;
-    $scope.data = {
-      showSearchBox: false
-    };
-    args = $location.search();
-    $scope.data = {
-      loading: true,
-      currentSorting: args.sort,
-      lastPage: 1,
-      currentPage: parseInt(args.page || 1)
-    };
-    $scope.sortOptions = [
-      {
-        name: 'Date',
-        value: '-date'
-      }, {
-        name: 'Name',
-        value: 'name'
-      }
-    ];
-    $scope.$watch("data.currentPage", function(newValue, oldValue) {
-      if (newValue !== oldValue) {
-        return $scope.switchPage(newValue);
-      }
-    });
-    $scope.jumpToPage = function() {
-      return $scope.switchPage($scope.pageToJumpTo);
-    };
-    $scope.handleItem = function(item) {
-      if (item.rel === 'folder') {
-        $location.path('/list');
-        $location.url($location.path());
-        return $location.search('url', item.href);
-      } else if (item.rel === 'file') {
-        item.watched = Date.now() / 1000;
-        return tidalstreamService.doItemPlayback(item);
-      }
-    };
-    $scope.switchPage = function(pageNumber) {
-      return $location.search('page', pageNumber);
-    };
-    $scope.switchSorting = function() {
-      return $location.search('sort', $scope.data.currentSorting);
-    };
-    generateGroupedListing = function(listing, itemsPerRow) {
-      var i, retval;
-      retval = [];
-      i = 0;
-      while (i * itemsPerRow < listing.length) {
-        retval.push(listing.slice(i * itemsPerRow, (i + 1) * itemsPerRow));
-        i++;
-      }
-      return retval;
-    };
-    addMetadata = function(listing) {
-      var deferred, i, item, missingMetadata, req, store, _i, _len;
-      deferred = $q.defer();
-      if (Modernizr.indexeddb) {
-        missingMetadata = [];
-        i = 0;
-        store = tidalstreamService._getObjectStore('readonly');
-        for (_i = 0, _len = listing.length; _i < _len; _i++) {
-          item = listing[_i];
-          if (!('metadata' in item)) {
-            continue;
-          }
-          i++;
-          req = store.get(item.metadata.href);
-          req.onsuccess = (function(item) {
-            return function(evt) {
-              var value;
-              i--;
-              value = evt.target.result;
-              if (value) {
-                $scope.$apply(function() {
-                  return item.metadata.result = value;
-                });
-              } else {
-                missingMetadata.push(item);
-              }
-              if (i === 0) {
-                return deferred.resolve(missingMetadata);
-              }
-            };
-          })(item);
-        }
-      } else {
-        deferred.resolve((function() {
-          var _j, _len1, _results;
-          _results = [];
-          for (_j = 0, _len1 = listing.length; _j < _len1; _j++) {
-            item = listing[_j];
-            if ('metadata' in item) {
-              _results.push(item);
-            }
-          }
-          return _results;
-        })());
-      }
-      return deferred.promise;
-    };
-    flattenListing = function(listing) {
-      var flatten, retval;
-      retval = [];
-      if (listing) {
-        flatten = function(items) {
-          var item, _i, _len, _results;
-          _results = [];
-          for (_i = 0, _len = items.length; _i < _len; _i++) {
-            item = items[_i];
-            if ('result' in item) {
-              _results.push(flatten(item.result));
-            } else {
-              _results.push(retval.push(item));
-            }
-          }
-          return _results;
-        };
-        flatten(listing);
-      }
-      return retval;
-    };
-    generateLetterPages = function(listing) {
-      var firstLetter, i, item, _i, _len, _results;
-      $scope.letterPages = {
-        '#': 0
-      };
-      i = 0;
-      _results = [];
-      for (_i = 0, _len = listing.length; _i < _len; _i++) {
-        item = listing[_i];
-        if (!item.name) {
-          continue;
-        }
-        firstLetter = item.name[0].toUpperCase();
-        if (__indexOf.call(KNOWN_LETTERS, firstLetter) < 0) {
-          continue;
-        }
-        if (!(firstLetter in $scope.letterPages)) {
-          $scope.letterPages[firstLetter] = Math.ceil(i / ENTRIES_PER_PAGE);
-        }
-        _results.push(i++);
-      }
-      return _results;
-    };
-    $scope.listFolder = function(url) {
-      return tidalstreamService.listFolder(url).then(function(data) {
-        var key, listing, reverse;
-        $scope.data.loading = false;
-        $scope.title = data.title || data.name;
-        $scope.contentType = data.content_type || 'default';
-        listing = flattenListing(data.result);
-        if ($scope.data.currentSorting) {
-          key = $scope.data.currentSorting;
-          reverse = false;
-          if (key[0] === '-') {
-            key = key.slice(1);
-            reverse = true;
-          }
-          listing.sort(function(a, b) {
-            if (a[key] > b[key]) {
-              return 1;
-            } else if (a[key] < b[key]) {
-              return -1;
-            } else {
-              return 0;
-            }
-          });
-          if (reverse) {
-            listing.reverse();
-          }
-        }
-        generateLetterPages(listing);
-        $scope.data.lastPage = Math.ceil(listing.length / ENTRIES_PER_PAGE);
-        listing = listing.slice(($scope.data.currentPage - 1) * ENTRIES_PER_PAGE, $scope.data.currentPage * ENTRIES_PER_PAGE);
-        if (tidalstreamService.featureList.metadata) {
-          addMetadata(listing).then(function(missingMetadata) {
-            var item, _i, _len, _results;
-            _results = [];
-            for (_i = 0, _len = missingMetadata.length; _i < _len; _i++) {
-              item = missingMetadata[_i];
-              _results.push(tidalstreamService.getMetadata(item).then((function(item) {
-                return function(metadata) {
-                  if (metadata) {
-                    return item.metadata.result = metadata;
-                  }
-                };
-              })(item)));
-            }
-            return _results;
-          });
-        }
-        $scope.listing = listing;
-        return $scope.groupedListing = generateGroupedListing($scope.listing, 6);
-      });
-    };
-    if (args.url) {
-      return $scope.listFolder(args.url);
-    }
-  });
-
-  tidalstreamApp.controller('SearchBoxCtrl', function($scope, $location, tidalstreamService) {
-    var currentUrl, section, templateMap;
-    $scope.template = "assets/partials/search-loading.html";
-    $scope.variables = {};
-    $scope.schema = {};
-    $scope.Math = window.Math;
-    currentUrl = $location.search().url;
-    section = currentUrl.split('/')[4];
-    templateMap = {
-      anime: 'mal',
-      tvshows: 'imdb',
-      movies: 'imdb'
-    };
-    tidalstreamService.getSearchSchema(section).then(function(data) {
-      if (data.status === 'error' || !(data.type in templateMap)) {
-        return $scope.template = 'assets/partials/search-nosearch.html';
-      } else {
-        $scope.schema = data.schema;
-        return $scope.template = "assets/partials/search-" + templateMap[data.type] + ".html";
-      }
-    });
-    $scope.doSearch = function() {
-      var key, searchString, v, value, _i, _len, _ref;
-      searchString = $scope.variables.q || '';
-      console.log(searchString);
-      _ref = $scope.variables;
-      for (key in _ref) {
-        value = _ref[key];
-        if (key === 'q') {
-          continue;
-        }
-        if (value instanceof Array) {
-          for (_i = 0, _len = value.length; _i < _len; _i++) {
-            v = value[_i];
-            if (!v) {
-              continue;
-            }
-            if (v.indexOf(' ') > -1) {
-              v = "\"" + v + "\"";
-            }
-            searchString += " " + key + ":" + v;
-          }
-        } else {
-          if (!value) {
-            continue;
-          }
-          if (value.indexOf(' ') > -1) {
-            value = "\"" + value + "\"";
-          }
-          searchString += " " + key + ":" + value;
-        }
-      }
-      if (searchString) {
-        $location.url($location.path());
-        return $location.search('url', "" + tidalstreamService.featureList.search + "/" + section + "/?q=" + (encodeURIComponent(searchString)));
-      }
-    };
-    $scope.toggleKey = function(type, key) {
-      var index;
-      if (!(type in $scope.variables)) {
-        $scope.variables[type] = [];
-      }
-      index = $scope.variables[type].indexOf(key);
-      if (index > -1) {
-        return $scope.variables[type].splice(index, 1);
-      } else {
-        return $scope.variables[type].push(key);
-      }
-    };
-    $scope.isYear = function(value) {
-      return value.match(/^(19|20)\d{2}$/) !== null;
-    };
-    return $scope.not = function(func) {
-      return function(item) {
-        return !func(item);
-      };
-    };
-  });
-
-  tidalstreamApp.controller('DownloadCtrl', function($scope, $interval, $modalInstance, tidalstreamService, item) {
-    return $scope.item = item;
-  });
-
-  tidalstreamApp.controller('PlayerCtrl', function($scope, $interval, $modalInstance, tidalstreamService, player) {
-    var calculateProgressbarTimestamp, getSpeed, interval;
-    $scope.player = player;
-    $scope.playerId = player.player_id;
-    $scope.currentPosition = '00:00:00';
-    $scope.currentAudiostream = 0;
-    $scope.playbackOutput = function() {
-      return tidalstreamService.playbackOutput;
-    };
-    $scope.setDefaultOutput = function(player) {
-      return tidalstreamService.playbackOutput = player;
-    };
-    $scope.$watch((function() {
-      return tidalstreamService.players[$scope.playerId];
-    }), function(newValue, oldValue) {
-      if ($scope.playerId in tidalstreamService.players) {
-        return $scope.player = tidalstreamService.players[$scope.playerId];
-      } else {
-        return $scope.player = null;
-      }
-    });
-    $scope.fastBackward = function() {
-      return tidalstreamService.playerPrevious($scope.player.player_id);
-    };
-    $scope.backward = function() {
-      var speed;
-      speed = getSpeed(-1);
-      if (speed !== null) {
-        return tidalstreamService.playerSetSpeed($scope.player.player_id, speed);
-      }
-    };
-    $scope.stop = function() {
-      return tidalstreamService.playerStop($scope.player.player_id);
-    };
-    $scope.pause = function() {
-      return tidalstreamService.playerSetSpeed($scope.player.player_id, 0);
-    };
-    $scope.play = function() {
-      return tidalstreamService.playerSetSpeed($scope.player.player_id, 1);
-    };
-    $scope.forward = function() {
-      var speed;
-      speed = getSpeed(1);
-      if (speed !== null) {
-        return tidalstreamService.playerSetSpeed($scope.player.player_id, speed);
-      }
-    };
-    $scope.fastForward = function() {
-      return tidalstreamService.playerNext($scope.player.player_id);
-    };
-    $scope.seek = function(timestamp) {
-      return tidalstreamService.playerSeek($scope.player.player_id, timestamp);
-    };
-    $scope.calculateCurrentPosition = function(event) {
-      return $scope.currentPosition = calculateProgressbarTimestamp(event);
-    };
-    $scope.clickOnProgressbar = function(event) {
-      return $scope.seek(calculateProgressbarTimestamp(event));
-    };
-    $scope.changedSubtitle = function() {
-      return tidalstreamService.playerSetSubtitle($scope.player.player_id, $scope.player.player.current_subtitle);
-    };
-    $scope.changedAudioStream = function() {
-      return tidalstreamService.playerSetAudioStream($scope.player.player_id, $scope.player.player.current_audiostream);
-    };
-    interval = $interval((function() {}), 1000);
-    $scope.$originalDestroy = $scope.$destroy;
-    $scope.$destroy = function() {
-      $interval.cancel(interval);
-      return $scope.$originalDestroy();
-    };
-    calculateProgressbarTimestamp = function(event) {
-      var clickWidth, width;
-      width = event.currentTarget.offsetWidth;
-      clickWidth = event.offsetX;
-      return (clickWidth / width) * $scope.player.player.length;
-    };
-    return getSpeed = function(direction) {
-      var currentSpeed, index, speeds;
-      speeds = $scope.player.features.speed;
-      currentSpeed = $scope.player.player.speed;
-      if (__indexOf.call(speeds, 1) < 0) {
-        speeds.push(1);
-      }
-      speeds.sort(function(a, b) {
-        return a - b;
-      });
-      index = speeds.indexOf(currentSpeed);
-      if (index === -1) {
-        return null;
-      }
-      return speeds[index + direction] || currentSpeed;
-    };
   });
 
   tidalstreamApp.filter('timespan', function() {
