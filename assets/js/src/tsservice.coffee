@@ -6,7 +6,7 @@
 # trackalicious = tracking on front page
 # motd = console.log
 tidalstreamApp.config ($provide) ->
-    $provide.factory 'tidalstreamService', ($rootScope, $location, $http, $q, $log, $interval, $modal, $timeout) ->
+    $provide.factory 'tidalstreamService', ($rootScope, $location, $http, $q, $log, $modal, $timeout) ->
         obj =
             apiserver: null
             username: null
@@ -219,8 +219,27 @@ tidalstreamApp.config ($provide) ->
             ###
             detectFeatures: -> # figure out what we can do
                 $log.debug 'Detecting features'
+                
+                modalInstance = null
+                modalData =
+                    countdown: 30
+                    errorMessage: null
+                
+                modalTimeout = $timeout (->
+                        modalInstance = $modal.open
+                            templateUrl: 'assets/partials/logging-in.html'
+                            backdrop: 'static'
+                            controller: 'LoggingInCtrl'
+                            resolve:
+                                data: ->
+                                    modalData
+                    ), 600
+                
                 $http.get @apiserver
                     .success (data) ->
+                        if modalTimeout
+                            $timeout.cancel(modalTimeout)
+                        
                         for name, info of data
                             if info.rel == 'feature'
                                 obj.featureList[name] = info.href
@@ -229,6 +248,12 @@ tidalstreamApp.config ($provide) ->
                                 
                             else if name == 'motd'
                                 console.log 'The MOTD:', info
+                        
+                        if modalInstance
+                            modalInstance.dismiss()
+                    .error (data, status, headers, config) ->
+                        modalData.errorMessage = ['Failed to get features from APIServer. This means it is probably down!',
+                                                  'You should try again later or contact your local system adminstrator']
             
             hasLoggedIn: (@apiserver, @username, @password) ->
                 @loggedIn = true

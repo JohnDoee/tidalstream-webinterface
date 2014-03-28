@@ -1,0 +1,10 @@
+<div class="modal-content">
+    <div class="modal-header">
+      <h4 class="modal-title" ng-show="!data.errorMessage">Logging in....</h4>
+      <h4 class="modal-title" ng-show="data.errorMessage">Failed to login</h4>
+    </div>
+    <div class="modal-body">
+      <p ng-show="!data.errorMessage">Please wait while we log you in.... ({{ data.countdown }})</p>
+      <p ng-show="data.errorMessage" ng-repeat="msg in data.errorMessage">{{msg}}</p>
+    </div>
+</div><!-- /.modal-content -->

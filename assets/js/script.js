@@ -300,6 +300,15 @@
     };
   });
 
+  tidalstreamApp.controller('LoggingInCtrl', function($scope, $modalInstance, $interval, data) {
+    var countdown, doCountdown;
+    $scope.data = data;
+    doCountdown = function() {
+      return $scope.data.countdown -= 1;
+    };
+    return countdown = $interval(doCountdown, 1000, $scope.data.countdown);
+  });
+
   tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
     $scope.isLoggedIn = function() {
       return tidalstreamService.loggedIn;
@@ -528,7 +537,7 @@
   });
 
   tidalstreamApp.config(function($provide) {
-    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal, $timeout) {
+    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $modal, $timeout) {
       var obj;
       obj = {
         apiserver: null,
@@ -792,22 +801,44 @@
         MISC
          */
         detectFeatures: function() {
+          var modalData, modalInstance, modalTimeout;
           $log.debug('Detecting features');
+          modalInstance = null;
+          modalData = {
+            countdown: 30,
+            errorMessage: null
+          };
+          modalTimeout = $timeout((function() {
+            return modalInstance = $modal.open({
+              templateUrl: 'assets/partials/logging-in.html',
+              backdrop: 'static',
+              controller: 'LoggingInCtrl',
+              resolve: {
+                data: function() {
+                  return modalData;
+                }
+              }
+            });
+          }), 600);
           return $http.get(this.apiserver).success(function(data) {
-            var info, name, _results;
-            _results = [];
+            var info, name;
+            if (modalTimeout) {
+              $timeout.cancel(modalTimeout);
+            }
             for (name in data) {
               info = data[name];
               if (info.rel === 'feature') {
                 obj.featureList[name] = info.href;
-                _results.push($rootScope.$emit("feature-" + name));
+                $rootScope.$emit("feature-" + name);
               } else if (name === 'motd') {
-                _results.push(console.log('The MOTD:', info));
-              } else {
-                _results.push(void 0);
+                console.log('The MOTD:', info);
               }
             }
-            return _results;
+            if (modalInstance) {
+              return modalInstance.dismiss();
+            }
+          }).error(function(data, status, headers, config) {
+            return modalData.errorMessage = ['Failed to get features from APIServer. This means it is probably down!', 'You should try again later or contact your local system adminstrator'];
           });
         },
         hasLoggedIn: function(apiserver, username, password) {

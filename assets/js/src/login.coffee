@@ -26,3 +26,11 @@ tidalstreamApp.controller 'LoginCtrl', ($scope, $location, tidalstreamService) -
         
         tidalstreamService.hasLoggedIn @apiserver.replace(/\/+$/,'') , @username, @password
         $location.path '/'
+
+tidalstreamApp.controller 'LoggingInCtrl', ($scope, $modalInstance, $interval, data) ->
+    $scope.data = data
+    
+    doCountdown = ->
+        $scope.data.countdown -= 1
+    
+    countdown = $interval doCountdown, 1000, $scope.data.countdown
