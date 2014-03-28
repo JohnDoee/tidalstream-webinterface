@@ -22,8 +22,8 @@
             </select>
         </div>
     </div>
-    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/cover.html'"></div>
-    <div ng-if="['default', 'episodes'].indexOf(contentType) > -1" ng-include="'/assets/partials/list/default.html'"></div>
+    <div ng-if="['movies', 'tvshows'].indexOf(contentType) > -1" ng-include="'assets/partials/list/cover.html'"></div>
+    <div ng-if="['default', 'episodes'].indexOf(contentType) > -1" ng-include="'assets/partials/list/default.html'"></div>
     <div class="row" style="text-align: center;" ng-if="data.lastPage > 1">
         <pagination items-per-page="1" total-items="data.lastPage" page="data.currentPage" max-size="7" class="pagination" boundary-links="true"></pagination>
     </div>
