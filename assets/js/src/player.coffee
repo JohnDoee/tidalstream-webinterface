@@ -3,9 +3,6 @@ tidalstreamApp.controller 'PlayerCtrl', ($scope, $interval, $modalInstance, tida
     $scope.playerId = player.player_id
     $scope.currentPosition = '00:00:00'
     $scope.currentAudiostream = 0
-    $scope.playbackOutput = -> tidalstreamService.playbackOutput
-    $scope.setDefaultOutput = (player) ->
-        tidalstreamService.playbackOutput = player
     
     $scope.$watch (-> tidalstreamService.players[$scope.playerId] ), (newValue, oldValue) ->
         if $scope.playerId of tidalstreamService.players

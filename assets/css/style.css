@@ -99,3 +99,6 @@ a {
   font-size: 24px;
   padding: 50px 5px 50px 0px;
 }
+.alert-box {
+  top: 60px;
+}

@@ -2,7 +2,7 @@ tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, $modal, tidalstreamS
     $scope.isLoggedIn = -> tidalstreamService.loggedIn
     $scope.getSections = -> tidalstreamService.sections
     $scope.getPlayers = -> tidalstreamService.players
-    $scope.playbackOutput = -> tidalstreamService.playbackOutput
+    $scope.playbackOutput = tidalstreamService.playbackOutput
     $scope.getWebsocketStatus = -> tidalstreamService.connectedToControl
     $scope.tsService = tidalstreamService
     
@@ -32,8 +32,23 @@ tidalstreamApp.controller 'NavbarCtrl', ($scope, $location, $modal, tidalstreamS
         
         $location.url '/login'
     
-    $scope.setPlaybackOutput = ($event, target) ->
-        tidalstreamService.playbackOutput = target
+    savePlaybackOutput = (type, target) ->
+        if localStorage.getItem "apiserver"
+            currentPlayer =
+                type: type
+            
+            if type == 'player'
+                currentPlayer.playerId = target.player_id
+            
+            localStorage.setItem "defaultPlayer", JSON.stringify currentPlayer
+    
+    $scope.setPlaybackOutput = ($event, type, target) ->
+        tidalstreamService.playbackOutput.obj = target
+        tidalstreamService.playbackOutput.type = type
+        tidalstreamService.playbackOutput.status = 'online'
+        
+        savePlaybackOutput type, target
+        
         $event.stopPropagation()
         $event.preventDefault()
     

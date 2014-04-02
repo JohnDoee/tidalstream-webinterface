@@ -16,7 +16,10 @@ tidalstreamApp.config ($provide) ->
             featureList: {}
             sections: []
             players: {}
-            playbackOutput: 'download'
+            playbackOutput:
+                obj: null
+                status: 'offline'
+                type: null
             latestListing: null
             latestListingUrl: null
             searchSchemas: {}
@@ -105,7 +108,7 @@ tidalstreamApp.config ($provide) ->
             _getToken: ->
                 deferred = $q.defer()
                 
-                $http.get "#{ obj.apiserver }/tokenauth/"
+                $http.get "#{ obj.featureList.tokenauth }"
                     .success (data) ->
                         deferred.resolve data.token
                     .error (data, status, headers, config) ->
@@ -121,8 +124,11 @@ tidalstreamApp.config ($provide) ->
                     when 'hello'
                         obj.players[player_id] = data.params
                         
-                        if obj.playbackOutput.player_id == player_id
-                            obj.playbackOutput = obj.players[player_id]
+                        defaultPlayer = obj.getDefaultPlayer()
+                        
+                        if obj.playbackOutput.type == 'player' and obj.playbackOutput.obj.player_id == player_id or defaultPlayer and defaultPlayer.type == 'player' and defaultPlayer.playerId == player_id
+                            obj.playbackOutput.obj = obj.players[player_id]
+                            obj.playbackOutput.status = 'online'
                         
                     when 'update'
                         for key, value of data.params.player
@@ -134,8 +140,8 @@ tidalstreamApp.config ($provide) ->
                     when 'bye'
                         delete obj.players[player_id]
                         
-                        if obj.playbackOutput.player_id == player_id
-                            obj.playbackOutput = 'download'
+                        if obj.playbackOutput.obj.player_id == player_id
+                            obj.playbackOutput.status = 'offline'
                 
                 if obj.onWebsocketUpdate instanceof Function
                     obj.onWebsocketUpdate()
@@ -243,11 +249,11 @@ tidalstreamApp.config ($provide) ->
                         for name, info of data
                             if info.rel == 'feature'
                                 obj.featureList[name] = info.href
-                                
-                                $rootScope.$emit "feature-#{ name }"
-                                
                             else if name == 'motd'
                                 console.log 'The MOTD:', info
+                        
+                        for name, info of obj.featureList
+                            $rootScope.$emit "feature-#{ name }"
                         
                         if modalInstance
                             modalInstance.dismiss()
@@ -258,6 +264,7 @@ tidalstreamApp.config ($provide) ->
             hasLoggedIn: (@apiserver, @username, @password) ->
                 @loggedIn = true
                 @detectFeatures()
+                # need to check if there's a playback device saved in localstore we can use (only if we save username)
             
             hasLoggedOut: ->
                 @loggedIn = false
@@ -316,7 +323,7 @@ tidalstreamApp.config ($provide) ->
                 if section of obj.searchSchemas
                     deferred.resolve obj.searchSchemas[section]
                 else
-                    $http.get "#{ obj.apiserver }/search/#{ section }/?schema=1"
+                    $http.get "#{ obj.featureList.search }/#{ section }/?schema=1"
                         .success (data) ->
                             obj.searchSchemas[section] = data
                             deferred.resolve data
@@ -324,14 +331,21 @@ tidalstreamApp.config ($provide) ->
                 deferred.promise
             
             doItemPlayback: (item) ->
+                unless obj.playbackOutput.status == 'online'
+                    $rootScope.$emit 'alert', 'warning', 'No player chosen, please choose a player before streaming.'
+                    return
+                
                 obj.loadingData = true
                 $http.post item.href
                     .success (data) ->
-                        obj.loadingData = false
-                        if obj.playbackOutput == 'download'
-                            obj.openDownloadModal data
+                        if data.status == 'error'
+                            console.log 'show error msg on creating stream'
                         else
-                            obj._sendToWebsocket 'open', obj.playbackOutput.player_id, url: data.href
+                            obj.loadingData = false
+                            if obj.playbackOutput.type == 'download'
+                                obj.openDownloadModal data
+                            else if obj.playbackOutput.type == 'player'
+                                playerPlayItem obj.playbackOutput.obj.player_id, data.href
             
             openDownloadModal: (item) ->
                 modalInstance = $modal.open
@@ -340,6 +354,9 @@ tidalstreamApp.config ($provide) ->
                     resolve:
                         item: ->
                             item
+            
+            getDefaultPlayer: ->
+                JSON.parse localStorage.getItem "defaultPlayer"
         
         if Modernizr.indexeddb
             obj._openMetadataDB()
@@ -363,5 +380,12 @@ tidalstreamApp.config ($provide) ->
         
         setInterval obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL
         setInterval obj._websocketPing, WEBSOCKET_PING
+        
+        defaultPlayer = obj.getDefaultPlayer()
+        if defaultPlayer.type == 'download'
+            obj.playbackOutput =
+                obj: null
+                status: 'online'
+                type: 'download'
         
         obj
