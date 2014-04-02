@@ -699,6 +699,7 @@
               if (obj.playbackOutput.type === 'player' && obj.playbackOutput.obj.player_id === player_id || defaultPlayer && defaultPlayer.type === 'player' && defaultPlayer.playerId === player_id) {
                 obj.playbackOutput.obj = obj.players[player_id];
                 obj.playbackOutput.status = 'online';
+                obj.playbackOutput.type = 'player';
               }
               break;
             case 'update':
