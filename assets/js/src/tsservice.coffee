@@ -129,6 +129,7 @@ tidalstreamApp.config ($provide) ->
                         if obj.playbackOutput.type == 'player' and obj.playbackOutput.obj.player_id == player_id or defaultPlayer and defaultPlayer.type == 'player' and defaultPlayer.playerId == player_id
                             obj.playbackOutput.obj = obj.players[player_id]
                             obj.playbackOutput.status = 'online'
+                            obj.playbackOutput.type = 'player'
                         
                     when 'update'
                         for key, value of data.params.player
