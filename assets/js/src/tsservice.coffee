@@ -345,7 +345,7 @@ tidalstreamApp.config ($provide) ->
                             if obj.playbackOutput.type == 'download'
                                 obj.openDownloadModal data
                             else if obj.playbackOutput.type == 'player'
-                                playerPlayItem obj.playbackOutput.obj.player_id, data.href
+                                obj.playerPlayItem obj.playbackOutput.obj.player_id, data.href
             
             openDownloadModal: (item) ->
                 modalInstance = $modal.open
