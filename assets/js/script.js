@@ -1003,7 +1003,7 @@
       setInterval(obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL);
       setInterval(obj._websocketPing, WEBSOCKET_PING);
       defaultPlayer = obj.getDefaultPlayer();
-      if (defaultPlayer.type === 'download') {
+      if (defaultPlayer && defaultPlayer.type === 'download') {
         obj.playbackOutput = {
           obj: null,
           status: 'online',
