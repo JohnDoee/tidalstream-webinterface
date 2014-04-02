@@ -955,7 +955,7 @@
               if (obj.playbackOutput.type === 'download') {
                 return obj.openDownloadModal(data);
               } else if (obj.playbackOutput.type === 'player') {
-                return playerPlayItem(obj.playbackOutput.obj.player_id, data.href);
+                return obj.playerPlayItem(obj.playbackOutput.obj.player_id, data.href);
               }
             }
           });
