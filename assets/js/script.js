@@ -58,6 +58,21 @@
     });
   });
 
+  tidalstreamApp.controller('AlertCtrl', function($scope, $rootScope, tidalstreamService) {
+    $scope.data = {
+      alerts: []
+    };
+    $scope.closeAlert = function(index) {
+      return $scope.data.alerts.splice(index, 1);
+    };
+    return $rootScope.$on('alert', function($event, type, msg) {
+      return $scope.data.alerts.push({
+        type: type,
+        msg: msg
+      });
+    });
+  });
+
   tidalstreamApp.controller('DownloadCtrl', function($scope, $interval, $modalInstance, tidalstreamService, item) {
     return $scope.item = item;
   });
@@ -300,7 +315,17 @@
     };
   });
 
+  tidalstreamApp.controller('LoggingInCtrl', function($scope, $modalInstance, $interval, data) {
+    var countdown, doCountdown;
+    $scope.data = data;
+    doCountdown = function() {
+      return $scope.data.countdown -= 1;
+    };
+    return countdown = $interval(doCountdown, 1000, $scope.data.countdown);
+  });
+
   tidalstreamApp.controller('NavbarCtrl', function($scope, $location, $modal, tidalstreamService) {
+    var savePlaybackOutput;
     $scope.isLoggedIn = function() {
       return tidalstreamService.loggedIn;
     };
@@ -310,9 +335,7 @@
     $scope.getPlayers = function() {
       return tidalstreamService.players;
     };
-    $scope.playbackOutput = function() {
-      return tidalstreamService.playbackOutput;
-    };
+    $scope.playbackOutput = tidalstreamService.playbackOutput;
     $scope.getWebsocketStatus = function() {
       return tidalstreamService.connectedToControl;
     };
@@ -343,8 +366,23 @@
       tidalstreamService.hasLoggedOut();
       return $location.url('/login');
     };
-    $scope.setPlaybackOutput = function($event, target) {
-      tidalstreamService.playbackOutput = target;
+    savePlaybackOutput = function(type, target) {
+      var currentPlayer;
+      if (localStorage.getItem("apiserver")) {
+        currentPlayer = {
+          type: type
+        };
+        if (type === 'player') {
+          currentPlayer.playerId = target.player_id;
+        }
+        return localStorage.setItem("defaultPlayer", JSON.stringify(currentPlayer));
+      }
+    };
+    $scope.setPlaybackOutput = function($event, type, target) {
+      tidalstreamService.playbackOutput.obj = target;
+      tidalstreamService.playbackOutput.type = type;
+      tidalstreamService.playbackOutput.status = 'online';
+      savePlaybackOutput(type, target);
       $event.stopPropagation();
       return $event.preventDefault();
     };
@@ -359,12 +397,6 @@
     $scope.playerId = player.player_id;
     $scope.currentPosition = '00:00:00';
     $scope.currentAudiostream = 0;
-    $scope.playbackOutput = function() {
-      return tidalstreamService.playbackOutput;
-    };
-    $scope.setDefaultOutput = function(player) {
-      return tidalstreamService.playbackOutput = player;
-    };
     $scope.$watch((function() {
       return tidalstreamService.players[$scope.playerId];
     }), function(newValue, oldValue) {
@@ -528,8 +560,8 @@
   });
 
   tidalstreamApp.config(function($provide) {
-    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $interval, $modal, $timeout) {
-      var obj;
+    return $provide.factory('tidalstreamService', function($rootScope, $location, $http, $q, $log, $modal, $timeout) {
+      var defaultPlayer, obj;
       obj = {
         apiserver: null,
         username: null,
@@ -539,7 +571,11 @@
         featureList: {},
         sections: [],
         players: {},
-        playbackOutput: 'download',
+        playbackOutput: {
+          obj: null,
+          status: 'offline',
+          type: null
+        },
         latestListing: null,
         latestListingUrl: null,
         searchSchemas: {},
@@ -645,7 +681,7 @@
         _getToken: function() {
           var deferred;
           deferred = $q.defer();
-          $http.get("" + obj.apiserver + "/tokenauth/").success(function(data) {
+          $http.get("" + obj.featureList.tokenauth).success(function(data) {
             return deferred.resolve(data.token);
           }).error(function(data, status, headers, config) {
             return deferred.reject('failed to fetch url');
@@ -653,14 +689,16 @@
           return deferred.promise;
         },
         _handleWebSocketMessage: function(e) {
-          var data, key, player_id, value, _ref;
+          var data, defaultPlayer, key, player_id, value, _ref;
           data = JSON.parse(e.data);
           player_id = data.params.player_id;
           switch (data.method) {
             case 'hello':
               obj.players[player_id] = data.params;
-              if (obj.playbackOutput.player_id === player_id) {
-                obj.playbackOutput = obj.players[player_id];
+              defaultPlayer = obj.getDefaultPlayer();
+              if (obj.playbackOutput.type === 'player' && obj.playbackOutput.obj.player_id === player_id || defaultPlayer && defaultPlayer.type === 'player' && defaultPlayer.playerId === player_id) {
+                obj.playbackOutput.obj = obj.players[player_id];
+                obj.playbackOutput.status = 'online';
               }
               break;
             case 'update':
@@ -675,8 +713,8 @@
               break;
             case 'bye':
               delete obj.players[player_id];
-              if (obj.playbackOutput.player_id === player_id) {
-                obj.playbackOutput = 'download';
+              if (obj.playbackOutput.obj.player_id === player_id) {
+                obj.playbackOutput.status = 'offline';
               }
           }
           if (obj.onWebsocketUpdate instanceof Function) {
@@ -792,22 +830,48 @@
         MISC
          */
         detectFeatures: function() {
+          var modalData, modalInstance, modalTimeout;
           $log.debug('Detecting features');
+          modalInstance = null;
+          modalData = {
+            countdown: 30,
+            errorMessage: null
+          };
+          modalTimeout = $timeout((function() {
+            return modalInstance = $modal.open({
+              templateUrl: 'assets/partials/logging-in.html',
+              backdrop: 'static',
+              controller: 'LoggingInCtrl',
+              resolve: {
+                data: function() {
+                  return modalData;
+                }
+              }
+            });
+          }), 600);
           return $http.get(this.apiserver).success(function(data) {
-            var info, name, _results;
-            _results = [];
+            var info, name, _ref;
+            if (modalTimeout) {
+              $timeout.cancel(modalTimeout);
+            }
             for (name in data) {
               info = data[name];
               if (info.rel === 'feature') {
                 obj.featureList[name] = info.href;
-                _results.push($rootScope.$emit("feature-" + name));
               } else if (name === 'motd') {
-                _results.push(console.log('The MOTD:', info));
-              } else {
-                _results.push(void 0);
+                console.log('The MOTD:', info);
               }
             }
-            return _results;
+            _ref = obj.featureList;
+            for (name in _ref) {
+              info = _ref[name];
+              $rootScope.$emit("feature-" + name);
+            }
+            if (modalInstance) {
+              return modalInstance.dismiss();
+            }
+          }).error(function(data, status, headers, config) {
+            return modalData.errorMessage = ['Failed to get features from APIServer. This means it is probably down!', 'You should try again later or contact your local system adminstrator'];
           });
         },
         hasLoggedIn: function(apiserver, username, password) {
@@ -870,7 +934,7 @@
           if (section in obj.searchSchemas) {
             deferred.resolve(obj.searchSchemas[section]);
           } else {
-            $http.get("" + obj.apiserver + "/search/" + section + "/?schema=1").success(function(data) {
+            $http.get("" + obj.featureList.search + "/" + section + "/?schema=1").success(function(data) {
               obj.searchSchemas[section] = data;
               return deferred.resolve(data);
             });
@@ -878,15 +942,21 @@
           return deferred.promise;
         },
         doItemPlayback: function(item) {
+          if (obj.playbackOutput.status !== 'online') {
+            $rootScope.$emit('alert', 'warning', 'No player chosen, please choose a player before streaming.');
+            return;
+          }
           obj.loadingData = true;
           return $http.post(item.href).success(function(data) {
-            obj.loadingData = false;
-            if (obj.playbackOutput === 'download') {
-              return obj.openDownloadModal(data);
+            if (data.status === 'error') {
+              return console.log('show error msg on creating stream');
             } else {
-              return obj._sendToWebsocket('open', obj.playbackOutput.player_id, {
-                url: data.href
-              });
+              obj.loadingData = false;
+              if (obj.playbackOutput.type === 'download') {
+                return obj.openDownloadModal(data);
+              } else if (obj.playbackOutput.type === 'player') {
+                return playerPlayItem(obj.playbackOutput.obj.player_id, data.href);
+              }
             }
           });
         },
@@ -901,6 +971,9 @@
               }
             }
           });
+        },
+        getDefaultPlayer: function() {
+          return JSON.parse(localStorage.getItem("defaultPlayer"));
         }
       };
       if (Modernizr.indexeddb) {
@@ -929,6 +1002,14 @@
       });
       setInterval(obj._updatePlayerTime, UPDATE_PLAYER_INTERVAL);
       setInterval(obj._websocketPing, WEBSOCKET_PING);
+      defaultPlayer = obj.getDefaultPlayer();
+      if (defaultPlayer.type === 'download') {
+        obj.playbackOutput = {
+          obj: null,
+          status: 'online',
+          type: 'download'
+        };
+      }
       return obj;
     });
   });
