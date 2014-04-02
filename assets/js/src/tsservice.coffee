@@ -382,7 +382,7 @@ tidalstreamApp.config ($provide) ->
         setInterval obj._websocketPing, WEBSOCKET_PING
         
         defaultPlayer = obj.getDefaultPlayer()
-        if defaultPlayer.type == 'download'
+        if defaultPlayer and defaultPlayer.type == 'download'
             obj.playbackOutput =
                 obj: null
                 status: 'online'
