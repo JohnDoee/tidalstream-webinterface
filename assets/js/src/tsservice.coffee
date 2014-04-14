@@ -227,25 +227,25 @@ tidalstreamApp.config ($provide) ->
             detectFeatures: -> # figure out what we can do
                 $log.debug 'Detecting features'
                 
-                modalInstance = null
-                modalData =
+                modal =
+                    modalInstance: null
                     countdown: 30
                     errorMessage: null
                 
-                modalTimeout = $timeout (->
-                        modalInstance = $modal.open
+                modal.modalTimeout = $timeout (->
+                        modal.modalInstance = $modal.open
                             templateUrl: 'assets/partials/logging-in.html'
                             backdrop: 'static'
                             controller: 'LoggingInCtrl'
                             resolve:
                                 data: ->
-                                    modalData
-                    ), 600
+                                    modal
+                    ), 900
                 
                 $http.get @apiserver
                     .success (data) ->
-                        if modalTimeout
-                            $timeout.cancel(modalTimeout)
+                        if modal.modalTimeout
+                            $timeout.cancel modal.modalTimeout
                         
                         for name, info of data
                             if info.rel == 'feature'
@@ -256,8 +256,8 @@ tidalstreamApp.config ($provide) ->
                         for name, info of obj.featureList
                             $rootScope.$emit "feature-#{ name }"
                         
-                        if modalInstance
-                            modalInstance.dismiss()
+                        if modal.modalInstance
+                            modal.modalInstance.dismiss()
                     .error (data, status, headers, config) ->
                         modalData.errorMessage = ['Failed to get features from APIServer. This means it is probably down!',
                                                   'You should try again later or contact your local system adminstrator']
