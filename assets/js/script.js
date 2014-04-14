@@ -831,29 +831,29 @@
         MISC
          */
         detectFeatures: function() {
-          var modalData, modalInstance, modalTimeout;
+          var modal;
           $log.debug('Detecting features');
-          modalInstance = null;
-          modalData = {
+          modal = {
+            modalInstance: null,
             countdown: 30,
             errorMessage: null
           };
-          modalTimeout = $timeout((function() {
-            return modalInstance = $modal.open({
+          modal.modalTimeout = $timeout((function() {
+            return modal.modalInstance = $modal.open({
               templateUrl: 'assets/partials/logging-in.html',
               backdrop: 'static',
               controller: 'LoggingInCtrl',
               resolve: {
                 data: function() {
-                  return modalData;
+                  return modal;
                 }
               }
             });
-          }), 600);
+          }), 900);
           return $http.get(this.apiserver).success(function(data) {
             var info, name, _ref;
-            if (modalTimeout) {
-              $timeout.cancel(modalTimeout);
+            if (modal.modalTimeout) {
+              $timeout.cancel(modal.modalTimeout);
             }
             for (name in data) {
               info = data[name];
@@ -868,8 +868,8 @@
               info = _ref[name];
               $rootScope.$emit("feature-" + name);
             }
-            if (modalInstance) {
-              return modalInstance.dismiss();
+            if (modal.modalInstance) {
+              return modal.modalInstance.dismiss();
             }
           }).error(function(data, status, headers, config) {
             return modalData.errorMessage = ['Failed to get features from APIServer. This means it is probably down!', 'You should try again later or contact your local system adminstrator'];
